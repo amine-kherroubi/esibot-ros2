@@ -1,0 +1,11 @@
+../build/
+../install/
+../log/
+__pycache__/
+*.pyc
+*.egg-info/
+.vscode/
+.idea/
+*.db3
+*.mcap
+metadata.yaml
