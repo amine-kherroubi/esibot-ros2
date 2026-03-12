@@ -1,0 +1,160 @@
+<?xml version="1.0"?>
+<!--
+  EsiBot Materials / Gazebo Colors
+  =================================
+  Two sections:
+    1. URDF <material> blocks  → used by RViz2 / Foxglove 3D panel
+    2. <gazebo> blocks          → used by Gazebo Classic renderer
+
+  Rules:
+    - Every <link> that has a <visual> must reference a material name defined here.
+    - Gazebo ignores URDF <material> tags — it needs its own <gazebo reference="..."> block.
+    - Include this file at the TOP of esibot.urdf.xacro, before any link definitions:
+        <xacro:include filename="$(find esibot_description)/urdf/materials.xacro"/>
+
+  Color palette chosen to match physical components:
+    - Chassis plates  → dark grey (3D-printed PLA dark grey / black)
+    - Wheels          → black (rubber)
+    - Servo SG90      → white / light grey (standard SG90 color)
+    - HC-SR04         → blue PCB
+    - ESP32-CAM       → black PCB
+    - Raspberry Pi 4  → green PCB
+    - L298N driver    → red PCB
+    - Caster          → dark grey
+    - Spacers         → silver / aluminium
+-->
+<robot name="esibot_materials" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ================================================================
+       SECTION 1 — URDF MATERIALS (RViz2 / Foxglove)
+       rgba: red green blue alpha, all 0.0–1.0
+       ================================================================ -->
+
+  <!-- Structural -->
+  <material name="chassis_grey">
+    <color rgba="0.20 0.20 0.20 1.0"/>
+  </material>
+
+  <material name="spacer_silver">
+    <color rgba="0.75 0.75 0.75 1.0"/>
+  </material>
+
+  <!-- Wheels -->
+  <material name="wheel_black">
+    <color rgba="0.08 0.08 0.08 1.0"/>
+  </material>
+
+  <!-- Servo SG90 body -->
+  <material name="servo_white">
+    <color rgba="0.90 0.90 0.90 1.0"/>
+  </material>
+
+  <!-- HC-SR04 PCB -->
+  <material name="hcsr04_blue">
+    <color rgba="0.10 0.30 0.80 1.0"/>
+  </material>
+
+  <!-- ESP32-CAM PCB -->
+  <material name="esp32_black">
+    <color rgba="0.10 0.10 0.10 1.0"/>
+  </material>
+
+  <!-- Raspberry Pi 4 PCB -->
+  <material name="rpi_green">
+    <color rgba="0.13 0.55 0.13 1.0"/>
+  </material>
+
+  <!-- L298N motor driver (bright red PCB) -->
+  <material name="l298n_red">
+    <color rgba="0.80 0.08 0.08 1.0"/>
+  </material>
+
+  <!-- Yellow DC motors -->
+  <material name="motor_yellow">
+    <color rgba="0.90 0.75 0.00 1.0"/>
+  </material>
+
+  <!-- Orange accent (battery, wires) -->
+  <material name="lipo_orange">
+    <color rgba="0.95 0.45 0.05 1.0"/>
+  </material>
+
+  <!-- Transparent (sensors, for debug visualization) -->
+  <material name="transparent">
+    <color rgba="1.0 1.0 1.0 0.0"/>
+  </material>
+
+  <!-- ================================================================
+       SECTION 2 — GAZEBO MATERIALS
+       Gazebo Classic uses a different material system (Ogre scripts).
+       The simplest cross-platform approach: use Gazebo/[Color] strings.
+       Full list: http://wiki.ros.org/simulator_gazebo/Tutorials/ListOfMaterials
+
+       Each <gazebo reference="LINK_NAME"> block below corresponds to a
+       link defined in esibot.urdf.xacro.
+       ================================================================ -->
+
+  <!-- Chassis plates (lower + upper) -->
+  <gazebo reference="base_link">
+    <material>Gazebo/DarkGrey</material>
+    <mu1>0.5</mu1>
+    <mu2>0.5</mu2>
+  </gazebo>
+
+  <gazebo reference="upper_plate">
+    <material>Gazebo/DarkGrey</material>
+  </gazebo>
+
+  <!-- Wheels -->
+  <gazebo reference="left_wheel">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <gazebo reference="right_wheel">
+    <material>Gazebo/Black</material>
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <!-- Caster: zero friction so it rolls freely in any direction -->
+  <gazebo reference="caster_wheel">
+    <material>Gazebo/DarkGrey</material>
+    <mu1>0.001</mu1>
+    <mu2>0.001</mu2>
+    <kp>1000000.0</kp>
+    <kd>100.0</kd>
+    <minDepth>0.001</minDepth>
+    <maxVel>1.0</maxVel>
+  </gazebo>
+
+  <!-- Servo SG90 body -->
+  <gazebo reference="servo_base">
+    <material>Gazebo/White</material>
+  </gazebo>
+
+  <!-- Servo horn / rotating arm -->
+  <gazebo reference="servo_link">
+    <material>Gazebo/White</material>
+  </gazebo>
+
+  <!-- HC-SR04 sensor -->
+  <gazebo reference="ultrasound_sensor">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+
+  <!-- ESP32-CAM -->
+  <gazebo reference="camera_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+</robot>

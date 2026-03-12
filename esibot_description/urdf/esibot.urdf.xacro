@@ -1,0 +1,327 @@
+<?xml version="1.0"?>
+<!--
+  EsiBot URDF/Xacro
+  ==================
+  Architecture : 2-wheel differential drive + 1 caster + SG90 servo turret + HC-SR04 + ESP32-CAM
+  Matches spec : HC-SR04 on SG90 servo = pseudo-LiDAR  |  ESP32-CAM OV2640 camera
+
+  TF tree:
+    base_footprint  (Nav2/SLAM root, ground level)
+    └── base_link   (lower chassis centre)
+        ├── left_wheel   (continuous)
+        ├── right_wheel  (continuous)
+        ├── caster_wheel (fixed)
+        ├── upper_plate  (fixed, 80 mm above)
+        │   ├── servo_base  (fixed, SG90 body)
+        │   │   └── servo_link  (REVOLUTE ±90°, drives HC-SR04 sweep)
+        │   │       └── ultrasound_sensor (fixed, HC-SR04 board)
+        │   └── camera_link (fixed, ESP32-CAM)
+        │       └── camera_optical_link (fixed, Z-forward optical frame)
+        └── imu_link (fixed, placeholder)
+
+  Materials / Gazebo surface props → materials.xacro  (do NOT redeclare here)
+-->
+<robot name="esibot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- All <material> and <gazebo reference> color/friction blocks live here -->
+  <xacro:include filename="$(find esibot_description)/urdf/materials.xacro"/>
+
+  <!-- ── Properties — update with real chassis measurements ────────────────── -->
+  <xacro:property name="base_width"       value="0.138"/>
+  <xacro:property name="base_length"      value="0.140"/>
+  <xacro:property name="base_height"      value="0.012"/>
+  <xacro:property name="wheel_radius"     value="0.033"/>
+  <xacro:property name="wheel_width"      value="0.018"/>
+  <xacro:property name="wheel_separation" value="0.138"/>
+  <xacro:property name="caster_radius"    value="0.010"/>
+  <xacro:property name="spacer_height"    value="0.080"/>
+  <xacro:property name="sensor_arm_x"     value="0.020"/>
+
+  <!-- ── BASE FOOTPRINT ───────────────────────────────────────────────────── -->
+  <link name="base_footprint"/>
+
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 ${wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ── BASE LINK (lower plate) ──────────────────────────────────────────── -->
+  <link name="base_link">
+    <visual>
+      <geometry><box size="${base_length} ${base_width} ${base_height}"/></geometry>
+      <material name="chassis_grey"/>
+    </visual>
+    <collision>
+      <geometry><box size="${base_length} ${base_width} ${base_height}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.3"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+
+  <!-- ── UPPER PLATE ──────────────────────────────────────────────────────── -->
+  <link name="upper_plate">
+    <visual>
+      <geometry><box size="${base_length} ${base_width} ${base_height}"/></geometry>
+      <material name="chassis_grey"/>
+    </visual>
+    <collision>
+      <geometry><box size="${base_length} ${base_width} ${base_height}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0005" ixy="0" ixz="0" iyy="0.0005" iyz="0" izz="0.0005"/>
+    </inertial>
+  </link>
+
+  <joint name="upper_plate_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="upper_plate"/>
+    <origin xyz="0 0 ${spacer_height + base_height}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ── WHEEL MACRO ──────────────────────────────────────────────────────── -->
+  <xacro:macro name="drive_wheel" params="prefix reflect">
+    <link name="${prefix}_wheel">
+      <visual>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+        <material name="wheel_black"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <geometry><cylinder radius="${wheel_radius}" length="${wheel_width}"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.030"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="0.000016" ixy="0" ixz="0" iyy="0.000016" iyz="0" izz="0.000008"/>
+      </inertial>
+    </link>
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child  link="${prefix}_wheel"/>
+      <origin xyz="0 ${reflect * wheel_separation / 2} 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.01" friction="0.1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:drive_wheel prefix="left"  reflect="1"/>
+  <xacro:drive_wheel prefix="right" reflect="-1"/>
+
+  <!-- ── CASTER WHEEL ─────────────────────────────────────────────────────── -->
+  <link name="caster_wheel">
+    <visual>
+      <geometry><sphere radius="${caster_radius}"/></geometry>
+      <material name="chassis_grey"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="${caster_radius}"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.005"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0000008" ixy="0" ixz="0" iyy="0.0000008" iyz="0" izz="0.0000008"/>
+    </inertial>
+  </link>
+
+  <joint name="caster_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="caster_wheel"/>
+    <origin xyz="${-(base_length/2 - caster_radius)} 0 ${-(wheel_radius - caster_radius)}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ── SERVO BASE (SG90 body) ────────────────────────────────────────────── -->
+  <link name="servo_base">
+    <visual>
+      <geometry><box size="0.023 0.032 0.027"/></geometry>
+      <material name="servo_white"/>
+    </visual>
+    <collision>
+      <geometry><box size="0.023 0.032 0.027"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.009"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0000003" ixy="0" ixz="0" iyy="0.0000003" iyz="0" izz="0.0000002"/>
+    </inertial>
+  </link>
+
+  <joint name="servo_base_joint" type="fixed">
+    <parent link="upper_plate"/>
+    <child  link="servo_base"/>
+    <origin xyz="0 0 ${base_height/2 + 0.0135}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ── SERVO LINK (SG90 horn — REVOLUTE) ────────────────────────────────── -->
+  <!--
+    angle =   0   → sensor faces forward (+X)
+    angle = +π/2  → sensor faces left    (+Y)
+    angle = -π/2  → sensor faces right   (-Y)
+    The Gazebo joint_state_publisher plugin publishes this angle to /joint_states.
+    NEVER run joint_state_publisher_gui alongside Gazebo — they conflict.
+  -->
+  <link name="servo_link">
+    <visual>
+      <geometry><cylinder radius="0.010" length="0.004"/></geometry>
+      <material name="servo_white"/>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.010" length="0.004"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.002"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.00000005" ixy="0" ixz="0" iyy="0.00000005" iyz="0" izz="0.0000001"/>
+    </inertial>
+  </link>
+
+  <joint name="servo_joint" type="revolute">
+    <parent link="servo_base"/>
+    <child  link="servo_link"/>
+    <origin xyz="0 0 0.016" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-pi/2}" upper="${pi/2}" effort="0.34" velocity="5.24"/>
+    <dynamics damping="0.001" friction="0.001"/>
+  </joint>
+
+  <!-- ── HC-SR04 SENSOR LINK ──────────────────────────────────────────────── -->
+  <link name="ultrasound_sensor">
+    <visual>
+      <geometry><box size="0.045 0.020 0.015"/></geometry>
+      <material name="hcsr04_blue"/>
+    </visual>
+    <collision>
+      <geometry><box size="0.045 0.020 0.015"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.008"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0000001" ixy="0" ixz="0" iyy="0.0000001" iyz="0" izz="0.0000001"/>
+    </inertial>
+  </link>
+
+  <joint name="ultrasound_joint" type="fixed">
+    <parent link="servo_link"/>
+    <child  link="ultrasound_sensor"/>
+    <origin xyz="${sensor_arm_x} 0 0.010" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ── ESP32-CAM ─────────────────────────────────────────────────────────── -->
+  <link name="camera_link">
+    <visual>
+      <geometry><box size="0.027 0.040 0.015"/></geometry>
+      <material name="esp32_black"/>
+    </visual>
+    <collision>
+      <geometry><box size="0.027 0.040 0.015"/></geometry>
+    </collision>
+    <inertial>
+      <mass value="0.010"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0000001" ixy="0" ixz="0" iyy="0.0000001" iyz="0" izz="0.0000001"/>
+    </inertial>
+  </link>
+
+  <link name="camera_optical_link"/>
+
+  <joint name="camera_joint" type="fixed">
+    <parent link="upper_plate"/>
+    <child  link="camera_link"/>
+    <origin xyz="${base_length/2 - 0.010} 0 ${base_height/2 + 0.010}" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="camera_optical_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child  link="camera_optical_link"/>
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+  </joint>
+
+  <!-- ── IMU LINK (placeholder) ────────────────────────────────────────────── -->
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child  link="imu_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ════════════════════════════════════════════════════════════════════════
+       GAZEBO PLUGINS
+  ════════════════════════════════════════════════════════════════════════ -->
+
+<!-- 1. Differential Drive -->
+<gazebo>
+  <plugin filename="gz-sim-diff-drive-system"
+          name="gz::sim::systems::DiffDrive">
+    <left_joint>left_wheel_joint</left_joint>
+    <right_joint>right_wheel_joint</right_joint>
+    <wheel_separation>0.138</wheel_separation>
+    <wheel_radius>0.033</wheel_radius>
+    <max_linear_acceleration>1.0</max_linear_acceleration>
+    <topic>cmd_vel</topic>
+    <odom_topic>odom</odom_topic>
+    <frame_id>odom</frame_id>
+    <child_frame_id>base_footprint</child_frame_id>
+    <odom_publish_frequency>30</odom_publish_frequency>
+  </plugin>
+</gazebo>
+
+<!-- 2. Joint State Publisher -->
+<gazebo>
+  <plugin filename="gz-sim-joint-state-publisher-system"
+          name="gz::sim::systems::JointStatePublisher">
+    <joint_name>left_wheel_joint</joint_name>
+    <joint_name>right_wheel_joint</joint_name>
+    <joint_name>servo_joint</joint_name>
+    <topic>joint_states</topic>
+    <update_rate>30</update_rate>
+  </plugin>
+</gazebo>
+
+<!-- 3. HC-SR04 Ray Sensor -->
+<gazebo reference="ultrasound_sensor">
+  <sensor name="ultrasound" type="gpu_lidar">
+    <always_on>true</always_on>
+    <update_rate>20</update_rate>
+    <visualize>false</visualize>
+    <topic>ultrasound_raw</topic>
+    <lidar>
+      <scan>
+        <horizontal>
+          <samples>1</samples>
+          <resolution>1</resolution>
+          <min_angle>0.0</min_angle>
+          <max_angle>0.0</max_angle>
+        </horizontal>
+      </scan>
+      <range>
+        <min>0.02</min>
+        <max>4.00</max>
+        <resolution>0.003</resolution>
+      </range>
+      <noise><type>gaussian</type><mean>0.0</mean><stddev>0.003</stddev></noise>
+    </lidar>
+  </sensor>
+</gazebo>
+
+<!-- 4. ESP32-CAM -->
+<gazebo reference="camera_link">
+  <sensor name="esp32_camera" type="camera">
+    <always_on>true</always_on>
+    <update_rate>15.0</update_rate>
+    <visualize>false</visualize>
+    <topic>camera/image_raw</topic>
+    <camera>
+      <horizontal_fov>1.0472</horizontal_fov>
+      <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+      <clip><near>0.05</near><far>10.0</far></clip>
+    </camera>
+  </sensor>
+</gazebo>
+
+</robot>

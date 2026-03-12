@@ -1,0 +1,83 @@
+# # we ar
+
+# # ── 1. VELOCITY COMMAND (/cmd_vel) ──────────────────────────
+# # Direction: ROS_TO_GZ
+# # Nav2 and teleop_twist_keyboard publish here.
+# # Gazebo's DiffDrive system reads the gz-transport side.
+# - ros_topic_name:  /cmd_vel
+#   gz_topic_name:   /model/esibot/cmd_vel
+#   ros_type_name:   geometry_msgs/msg/Twist
+#   gz_type_name:    gz.msgs.Twist
+#   direction:       ROS_TO_GZ
+
+# # ── 2. ODOMETRY (/odom) ─────────────────────────────────────
+# # Direction: GZ_TO_ROS
+# # Gazebo's DiffDrive system computes odometry from wheel velocities
+# # and publishes on gz-transport. We bridge it to /odom for SLAM/Nav2.
+# - ros_topic_name:  /odom
+#   gz_topic_name:   /model/esibot/odometry
+#   ros_type_name:   nav_msgs/msg/Odometry
+#   gz_type_name:    gz.msgs.Odometry
+#   direction:       GZ_TO_ROS
+
+# # ── 3. JOINT STATES (/joint_states) ─────────────────────────
+# # Direction: GZ_TO_ROS
+# # Needed so robot_state_publisher can update the servo_joint angle
+# # in the TF tree. Without this, the turret stays frozen in RViz/Foxglove.
+# - ros_topic_name:  /joint_states
+#   gz_topic_name:   /world/esibot_world/model/esibot/joint_state
+#   ros_type_name:   sensor_msgs/msg/JointState
+#   gz_type_name:    gz.msgs.Model
+#   direction:       GZ_TO_ROS
+
+# # ── 4. TF (coordinate transforms) ───────────────────────────
+# # Direction: GZ_TO_ROS
+# # Gazebo Harmonic's DiffDrive plugin publishes TF (odom→base_footprint).
+# # robot_state_publisher handles the rest (URDF fixed joints).
+# - ros_topic_name:  /tf
+#   gz_topic_name:   /model/esibot/tf
+#   ros_type_name:   tf2_msgs/msg/TFMessage
+#   gz_type_name:    gz.msgs.Pose_V
+#   direction:       GZ_TO_ROS
+
+# # ── 5. ULTRASOUND SENSOR (HC-SR04 simulation) ───────────────
+# # Direction: GZ_TO_ROS
+# # The single-beam Ray sensor on ultrasound_sensor link publishes Range.
+# # The radar_node will read /ultrasound_raw and build the LaserScan.
+# - ros_topic_name:  /ultrasound_raw
+#   gz_topic_name:   /model/esibot/link/ultrasound_sensor/sensor/ultrasound/scan
+#   ros_type_name:   sensor_msgs/msg/LaserScan
+#   gz_type_name:    gz.msgs.LaserScan
+#   direction:       GZ_TO_ROS
+
+# # ── 6. CAMERA IMAGE (/camera/image_raw) ─────────────────────
+# # Direction: GZ_TO_ROS
+# # Simulates the ESP32-CAM OV2640 video stream.
+# # esircam_node subscribes here in simulation mode.
+# - ros_topic_name:  /camera/image_raw
+#   gz_topic_name:   /model/esibot/link/camera_link/sensor/esp32_camera/image
+#   ros_type_name:   sensor_msgs/msg/Image
+#   gz_type_name:    gz.msgs.Image
+#   direction:       GZ_TO_ROS
+
+# # ── 7. CAMERA INFO (/camera/camera_info) ────────────────────
+# # Direction: GZ_TO_ROS
+# # Camera calibration metadata (focal length, distortion, etc.).
+# # Required by OpenCV-based vision_node for correct undistortion.
+# - ros_topic_name:  /camera/camera_info
+#   gz_topic_name:   /model/esibot/link/camera_link/sensor/esp32_camera/camera_info
+#   ros_type_name:   sensor_msgs/msg/CameraInfo
+#   gz_type_name:    gz.msgs.CameraInfo
+#   direction:       GZ_TO_ROS
+
+# # ── 8. CLOCK (/clock) ───────────────────────────────────────
+# # Direction: GZ_TO_ROS
+# # All ROS2 nodes that have use_sim_time:=true subscribe to /clock
+# # to synchronize their timers with Gazebo's simulated time.
+# # Without this, sensor timestamps are wrong and SLAM diverges.
+# - ros_topic_name:  /clock
+#   gz_topic_name:   /clock
+#   ros_type_name:   rosgraph_msgs/msg/Clock
+#   gz_type_name:    gz.msgs.Clock
+#   direction:       GZ_TO_ROS
+

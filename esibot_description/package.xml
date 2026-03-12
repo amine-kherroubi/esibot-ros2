@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<?xml-model
+  href="http://download.ros.org/schema/package_format3.xsd"
+  schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  esibot_description — package.xml
+  ==================================
+  This package owns:
+    • The URDF/xacro robot model  (urdf/)
+    • Visual materials             (urdf/materials.xacro)
+    • 3D mesh files                (meshes/)
+    • RViz2 config                 (config/)
+    • display.launch.py            (launch/)
+
+  Dependency types:
+    <buildtool_depend>  — needed to BUILD this package
+    <exec_depend>       — needed at runtime (launch, executables)
+    <test_depend>       — only for running tests
+
+  ROS2 Jazzy note:
+    apt package: ros-jazzy-xacro  →  package.xml: <exec_depend>xacro</exec_depend>
+    (no distro prefix, underscores not hyphens)
+-->
+<package format="3">
+
+  <name>esibot_description</name>
+  <version>0.1.0</version>
+
+  <description>
+    EsiBot robot description package.
+    Contains the URDF/xacro model for the EsiBot differential-drive robot:
+    2 DC motors, 1 caster, SG90 servo turret with HC-SR04 ultrasound sensor,
+    and ESP32-CAM. Includes Gazebo Classic material definitions and a
+    display launch file for URDF inspection without simulation.
+  </description>
+
+  <!-- Update with your team info -->
+  <maintainer email="your@email.com">Team EsiBot</maintainer>
+  <license>Apache-2.0</license>
+  <author>Student A</author>
+  <author>Student B</author>
+  <author>Student C</author>
+
+  <!-- Build tool — required for all CMake-based ROS2 packages -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!--
+    xacro: preprocessor that expands our .urdf.xacro files.
+    Used in launch files via Command(["xacro", " ", urdf_file]).
+  -->
+  <exec_depend>xacro</exec_depend>
+
+  <!--
+    robot_state_publisher: reads URDF, publishes /tf and /tf_static.
+    Used in display.launch.py and sim.launch.py.
+  -->
+  <exec_depend>robot_state_publisher</exec_depend>
+
+  <!--
+    joint_state_publisher_gui: slider window for non-fixed joints
+    (wheels + servo_joint). Verifies turret rotation without Gazebo.
+    Used in display.launch.py.
+  -->
+  <exec_depend>joint_state_publisher_gui</exec_depend>
+
+  <!--
+    joint_state_publisher: headless version (no GUI).
+    Useful on the real Raspberry Pi which has no monitor.
+  -->
+  <exec_depend>joint_state_publisher</exec_depend>
+
+  <!--
+    foxglove_bridge: WebSocket server for browser-based visualization.
+    Connect at ws://localhost:8765 via app.foxglove.dev
+    Used in display.launch.py when use_foxglove:=true.
+  -->
+  <exec_depend>foxglove_bridge</exec_depend>
+
+  <!--
+    rviz2: optional 3D visualizer (may not render in WSL2 without WSLg).
+    Used in display.launch.py when use_rviz:=true.
+  -->
+  <exec_depend>rviz2</exec_depend>
+
+  <!--
+    urdf: provides check_urdf CLI tool for URDF validation.
+    Run: check_urdf <(xacro esibot.urdf.xacro) to debug parse errors.
+  -->
+  <exec_depend>urdf</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>
