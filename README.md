@@ -14,8 +14,7 @@ robot_ws/                     # The main workspace folder
 ├── src/                      # 📦 SOURCE CODE (This is the Git Repository)
 │   ├── esibot_description/   # Robot Blueprints (URDF, Meshes)
 │   ├── esibot_gazebo/        # Simulation (Gazebo World, Plugins)
-│   ├── esibot_bringup/       # (To be created) when we go to hardware
-│   ├── esibot_driver/        # (To be created)  Drivers 
+│   ├── esibot_bringup/       # (To be created) Drivers 
 │   ├── esibot_sensors/      # (To be created) Ultrasonic/Lidar logic
 │   ├── esibot_navigation/   # (To be created) Nav2 & SLAM configs
 │   └── esibot_camera/       # (To be created) Vision nodes
