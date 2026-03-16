@@ -5,7 +5,7 @@
   - Perimeter walls
   - 3 static box obstacles (for SLAM + Nav2 testing)
   - Adequate lighting
-  
+
   Scale: matches a typical lab/classroom corridor area.
 -->
 <sdf version="1.7">

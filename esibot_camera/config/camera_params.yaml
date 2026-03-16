@@ -1,11 +1,11 @@
 esibot_camera_node:
   ros__parameters:
-    esp32_ip:        '192.168.1.80'  
-    esp32_port:      80
-    stream_path:     '/stream'
-    frame_width:     320
-    frame_height:    240
-    publish_rate:    10.0
-    show_fps:        false
+    esp32_ip: "192.168.1.80"
+    esp32_port: 80
+    stream_path: "/stream"
+    frame_width: 320
+    frame_height: 240
+    publish_rate: 10.0
+    show_fps: false
     reconnect_delay: 3.0
-    camera_frame:    'camera_optical_frame'
+    camera_frame: "camera_optical_frame"

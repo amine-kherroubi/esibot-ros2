@@ -9,26 +9,27 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
-    desc_pkg   = get_package_share_directory("esibot_description")
+    desc_pkg = get_package_share_directory("esibot_description")
     gazebo_pkg = get_package_share_directory("esibot_gazebo")
 
-    urdf_file  = os.path.join(desc_pkg,   "urdf",   "esibot.urdf.xacro")
+    urdf_file = os.path.join(desc_pkg, "urdf", "esibot.urdf.xacro")
     world_file = os.path.join(gazebo_pkg, "worlds", "esibot_world.sdf")
 
     use_foxglove_arg = DeclareLaunchArgument(
-        "use_foxglove", default_value="true",
+        "use_foxglove",
+        default_value="true",
         description="Launch Foxglove Bridge (ws://localhost:8765)",
     )
     use_sim_time_arg = DeclareLaunchArgument(
-        "use_sim_time", default_value="true",
+        "use_sim_time",
+        default_value="true",
     )
 
     use_foxglove = LaunchConfiguration("use_foxglove")
     use_sim_time = LaunchConfiguration("use_sim_time")
 
     robot_description = ParameterValue(
-        Command([FindExecutable(name="xacro"), " ", urdf_file]),
-        value_type=str
+        Command([FindExecutable(name="xacro"), " ", urdf_file]), value_type=str
     )
 
     robot_state_pub = Node(
@@ -55,9 +56,16 @@ def generate_launch_description():
         name="spawn_esibot",
         output="screen",
         arguments=[
-            "-topic", "robot_description",
-            "-name",  "esibot",
-            "-x", "0.0", "-y", "0.0", "-z", "0.05",
+            "-topic",
+            "robot_description",
+            "-name",
+            "esibot",
+            "-x",
+            "0.0",
+            "-y",
+            "0.0",
+            "-z",
+            "0.05",
         ],
     )
 
@@ -93,12 +101,14 @@ def generate_launch_description():
         condition=IfCondition(use_foxglove),
     )
 
-    return LaunchDescription([
-        use_foxglove_arg,
-        use_sim_time_arg,
-        robot_state_pub,
-        gz_sim,
-        delayed_spawn,
-        gz_bridge,
-        foxglove_bridge,
-    ])
+    return LaunchDescription(
+        [
+            use_foxglove_arg,
+            use_sim_time_arg,
+            robot_state_pub,
+            gz_sim,
+            delayed_spawn,
+            gz_bridge,
+            foxglove_bridge,
+        ]
+    )
