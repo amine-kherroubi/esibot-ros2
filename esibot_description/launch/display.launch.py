@@ -89,10 +89,10 @@ def generate_launch_description():
     # ── Robot description: xacro → URDF string ────────────────────────────────
     # Command() runs at launch time, not at import time.
     # The result is a string containing the full parsed URDF XML.
-   robot_description = ParameterValue(
-    Command([FindExecutable(name="xacro"), " ", urdf_file]),
-    value_type=str
-   )
+    robot_description = ParameterValue(
+        Command([FindExecutable(name="xacro"), " ", urdf_file]),
+        value_type=str
+    )
 
     # ── Nodes ─────────────────────────────────────────────────────────────────
 
