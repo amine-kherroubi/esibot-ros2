@@ -100,7 +100,7 @@ def generate_launch_description():
             "ros2", "run", "nav2_map_server", "map_saver_cli",
             "-f", PathJoinSubstitution([map_dir, map_name]),
             "--ros-args",
-            "-p", "save_map_timeout:=5000",
+            "-p", "save_map_timeout:=5000.0",
             "-p", "free_thresh_default:=0.25",
             "-p", "occupied_thresh_default:=0.65",
         ],

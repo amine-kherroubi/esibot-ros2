@@ -98,8 +98,3 @@ Features: Loads the URDF and publishes TFs. Opens Foxglove bridge.
 ros2 launch esibot_description display.launch.py
 ```
 ---
-
-
----
-*Project for 4th Year Computer Science - ESI*
-```

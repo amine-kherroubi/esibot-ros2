@@ -36,10 +36,7 @@ The `use_lifecycle_manager` parameter (default: false):
 
   hw — Real hardware (Raspberry Pi 4)
     • use_sim_time = false
-    • static_transform_publisher: zero TF ultrasound_sensor → laser_link
-      radar_node (esibot_sensors) uses frame_id='laser_link',
-      but the EsiBot URDF defines the sensor link as 'ultrasound_sensor'.
-      Without this fix slam_toolbox raises a TF lookup error.
+    
 
 === NODES LAUNCHED ===
 
@@ -179,28 +176,7 @@ def generate_launch_description():
         condition=is_sim,
     )
 
-    # ── [2] static_tf_laser_link — HARDWARE ONLY ─────────────────────────────
-    #
-    # radar_node.py (esibot_sensors) publishes LaserScan with frame_id='laser_link'.
-    # The EsiBot URDF defines the sensor as link 'ultrasound_sensor'.
-    # → slam_toolbox cannot resolve: base_footprint → ... → laser_link
-    #
-    # Fix: zero-transform  ultrasound_sensor (URDF) → laser_link (radar_node)
-    # This attaches laser_link to the TF tree without moving it.
-    #
-    # Permanent fix: edit radar_node.py to use frame_id='ultrasound_sensor'.
-    static_tf_laser_link = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_tf_ultrasound_to_laser_link",
-        output="screen",
-        # format: x y z yaw pitch roll parent_frame child_frame
-        arguments=["0", "0", "0", "0", "0", "0",
-                   "ultrasound_sensor", "laser_link"],
-        condition=is_hw,
-    )
-
-    # ── [3a] async_slam_toolbox_node — SIMULATION MODE ───────────────────────
+    # ── [2a] async_slam_toolbox_node — SIMULATION MODE ───────────────────────
     #
     # Declared as LifecycleNode — the correct ROS 2 type for lifecycle nodes.
     # This is the key difference from using a plain Node:
@@ -232,7 +208,7 @@ def generate_launch_description():
         condition=is_sim,
     )
 
-    # ── [3b] async_slam_toolbox_node — HARDWARE MODE ─────────────────────────
+    # ── [2b] async_slam_toolbox_node — HARDWARE MODE ─────────────────────────
     slam_toolbox_hw = LifecycleNode(
         package="slam_toolbox",
         executable="async_slam_toolbox_node",
@@ -253,7 +229,7 @@ def generate_launch_description():
         condition=is_hw,
     )
 
-    # ── [4] CONFIGURE event — fired immediately after node starts ─────────────
+    # ── [3 CONFIGURE event — fired immediately after node starts ─────────────
     #
     # EmitEvent sends the CONFIGURE transition signal to slam_toolbox.
     # slam_toolbox moves: unconfigured → configuring → inactive
@@ -291,7 +267,7 @@ def generate_launch_description():
         ),
     )
 
-    # ── [5] ACTIVATE event — fired when CONFIGURE completes ──────────────────
+    # ── [4] ACTIVATE event — fired when CONFIGURE completes ──────────────────
     #
     # RegisterEventHandler monitors the slam_toolbox lifecycle state machine.
     # When it detects the transition: configuring → inactive (CONFIGURE done),
@@ -348,7 +324,7 @@ def generate_launch_description():
         ),
     )
 
-    # ── [6] RViz2 — OPTIONAL ─────────────────────────────────────────────────
+    # ── [5] RViz2 — OPTIONAL ─────────────────────────────────────────────────
     rviz2 = Node(
         package="rviz2",
         executable="rviz2",
@@ -359,7 +335,7 @@ def generate_launch_description():
         condition=IfCondition(use_rviz),
     )
 
-    # ── [7] Keyboard Teleoperation — OPTIONAL ─────────────────────────────────
+    # ── [6] Keyboard Teleoperation — OPTIONAL ─────────────────────────────────
     # Controls: i=forward, ,=backward, j=left, l=right, k=stop
     # Requires: sudo apt install xterm
     teleop_node = Node(
@@ -428,7 +404,6 @@ def generate_launch_description():
 
         # EsiBot-specific topic/TF fixes
         relay_node,            # sim only: /ultrasound_raw → /scan
-        static_tf_laser_link,  # hw only:  ultrasound_sensor → laser_link
 
         # slam_toolbox lifecycle nodes (only one active depending on mode)
         slam_toolbox_sim,
