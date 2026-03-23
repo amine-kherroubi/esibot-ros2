@@ -1,11 +1,11 @@
-#  esibot_camera
+# esibot_camera
 
 Package ROS2 — **Tâche ** : Stream vidéo ESP32-CAM → ROS2
 | ROS2 Jazzy | Ubuntu 24.04
 
 ---
 
-##  Description
+## Prérequis
 
 Ce package capture le flux vidéo MJPEG d'une **ESP32-CAM** via WiFi (HTTP),
 applique un traitement **OpenCV** (resize),
@@ -29,28 +29,12 @@ esibot_camera node  (OpenCV traitement)
 
 ---
 
-##  Prérequis
-
-- Ubuntu 24.04
-- ROS2 Jazzy
-- Python 3.12+
-
----
-
-##  Installation
-
-### 1. Installer les dépendances
+## Installation
 
 ```bash
-cd ~/robot_ws
+cd ~/esibot_ws
 rosdep update
 rosdep install --from-paths src --ignore-src -r -y
-```
-
-### 2. Compiler
-
-```bash
-cd ~/robot_ws
 colcon build --symlink-install --packages-select esibot_camera
 source install/setup.bash
 ```
@@ -97,67 +81,56 @@ Use this when you have the ESP32-CAM connected to WiFi
 
 Command:
 ```bash
-ros2 launch esibot_camera camera.launch.py esp32_ip:=<YOUR_ESP32_IP>
-```
-Example:
-```bash
-ros2 launch esibot_camera camera.launch.py esp32_ip:=192.168.1.45
+ros2 launch esibot_camera esibot_camera.launch.py esp32_ip:=192.168.1.80
 ```
 
-# Option 2: Simulation / Mock Server (No Hardware) :
-start the visualization bridge:
- ```bash
- ros2 launch esibot_description display.launch.py
- ```
-
-Run the Fake Server :
-```bash
-python3 fake_esp32_server.py
-```
-
-Run the ROS 2 Node  :
-Open a second terminal and point the camera node to your localhost IP (127.0.0.1) and the server port (8080):
-```bash
-ros2 launch esibot_camera camera.launch.py esp32_ip:=127.0.0.1 esp32_port:=8080
-```
+Démarre :
+- `camera_stream_node` — stream MJPEG ESP32-CAM → `/camera/image_raw`
+- `camera_compressed_republisher` — `/camera/image_raw` → `/camera/compressed`
 
 ---
 
 ##  other Visualisation options
 
-**Option 1 — Navigateur** : ouvrir directement `http://192.168.1.80/stream`
-
-**Option 2 — rqt** :
 ```bash
-ros2 run rqt_image_view rqt_image_view
+ros2 run rqt_image_view rqt_image_view /camera/image_raw
 ```
-Sélectionner le topic `/camera/image_raw`
-
 
 ---
 
-##  Structure du package
+## Topics
+
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/camera/image_raw` | `sensor_msgs/Image` | Image brute 320×240 |
+| `/camera/compressed` | `sensor_msgs/CompressedImage` | Image JPEG compressée |
+| `/camera/camera_info` | `sensor_msgs/CameraInfo` | Calibration caméra |
+| `/camera/status` | `std_msgs/String` | CONNECTED / DISCONNECTED |
+
+---
+
+## Configuration — `config/camera_params.yaml`
+
+| Paramètre | Défaut | Description |
+|-----------|--------|-------------|
+| `esp32_ip` | `192.168.1.80` | IP de l'ESP32-CAM |
+| `publish_rate` | `30.0` | Fréquence publication (Hz) |
+| `frame_width` | `320` | Largeur image |
+| `frame_height` | `240` | Hauteur image |
+| `show_fps` | `true` | Afficher FPS sur l'image raw |
+| `reconnect_delay` | `3.0` | Délai reconnexion (secondes) |
+
+---
+
+## Structure
 
 ```
 esibot_camera/
-├── CMakeLists.txt
-├── package.xml
-├── README.md
 ├── esibot_camera/
-│   ├── __init__.py
-│   └── camera_stream_node.py    ← nœud principal
+│   └── camera_stream_node.py   ← stream MJPEG ESP32-CAM
 ├── launch/
-│   └── camera.launch.py
+│   ├── esibot_camera.launch.py ← caméra + compressed (recommandé)
+│   └── camera.launch.py        ← caméra seule
 └── config/
-    └── camera_params.yaml       ← configuration par défaut
+    └── camera_params.yaml
 ```
-
----
-
-##  Topics publiés
-
-| Topic                 | Type                         | Description              |
-| --------------------- | ---------------------------- | ------------------------ |
-| `/camera/image_raw`   | `sensor_msgs/msg/Image`      | Image BGR 320×240        |
-| `/camera/camera_info` | `sensor_msgs/msg/CameraInfo` | Calibration caméra       |
-| `/camera/status`      | `std_msgs/msg/String`        | CONNECTED / DISCONNECTED |

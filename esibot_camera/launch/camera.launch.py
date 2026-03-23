@@ -2,6 +2,8 @@ from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+import os
+
 
 
 def generate_launch_description():
@@ -35,5 +37,16 @@ def generate_launch_description():
                 output="screen",
                 emulate_tty=True,
             ),
+
+            # ── Republication compressée ────────────────────────────────
+            Node(
+                package='image_transport',
+                executable='republish',
+                name='camera_compressed_republisher',
+                arguments=['raw', 'in:=/camera/image_raw',
+                           'compressed', 'out:=/camera/compressed'],
+                output='screen',
+            ),
+
         ]
     )

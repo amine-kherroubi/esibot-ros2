@@ -5,7 +5,7 @@ esibot_camera_node:
     stream_path: "/stream"
     frame_width: 320
     frame_height: 240
-    publish_rate: 10.0
-    show_fps: false
+    publish_rate: 30.0
+    show_fps: true
     reconnect_delay: 3.0
     camera_frame: "camera_optical_frame"

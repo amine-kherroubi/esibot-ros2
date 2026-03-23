@@ -1,0 +1,24 @@
+vision_node:
+  ros__parameters:
+
+    # ── Image ──────────────────────────────────────────────────────────
+    image_width:  320
+    image_height: 240
+
+    # ── Détection ligne ────────────────────────────────────────────────
+    # ROI = 70% bas de l'image (sol visible)
+    line_roi_ratio:  0.55
+    # Seuil binaire inversé (ligne noire sur fond clair)
+    line_threshold:  60
+    # 'dark' = ligne sombre sur fond clair | 'light' = ligne claire sur fond sombre
+    line_color:      'dark'
+
+    # ── Détection obstacle ─────────────────────────────────────────────
+    # ROI = 40% haut de l'image (zone devant robot)
+    obstacle_roi_ratio: 0.40
+    # Aire minimale px² pour valider un obstacle (éviter faux positifs)
+    obstacle_min_area:  1500
+
+    # ── Options ────────────────────────────────────────────────────────
+    # Publier /camera/image_annotated (debug visuel, désactiver en prod)
+    publish_annotated: true
