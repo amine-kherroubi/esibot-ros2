@@ -4,8 +4,15 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 import math
 import time
-# Uncomment for real hardware
-import RPi.GPIO as GPIO
+import random 
+
+# Try to import GPIO. If it fails , set a flag.
+try:
+    import RPi.GPIO as GPIO
+    HARDWARE_AVAILABLE = True
+except ImportError:
+    HARDWARE_AVAILABLE = False
+    print("RPi.GPIO not found. Running in SIMULATION/MOCK mode.")
 
 class EsibotSensors(Node):
     def __init__(self):
@@ -15,25 +22,38 @@ class EsibotSensors(Node):
         # Parameters for testing / hardware
         self.angle_min = 0.0              # radians
         self.angle_max = math.radians(180)
+        # self.angle_min = -math.pi / 2  # -90 degrees
+        # self.angle_max = math.pi / 2   # +90 degrees
         self.angle_increment = math.radians(10)  # 10° step
         self.range_min = 0.02
         self.range_max = 4.0
 
         
         # Real hardware setup
-        GPIO.setmode(GPIO.BCM)
         self.servo_pin = 17 # servo => GPIO 17
         self.trig_pin = 27 # HC-SR04 TRIG (start measurement)=> GPIO 27
         self.echo_pin = 22 # HC-SR04 ECHO (return measurement time)=> GPIO 22
-        GPIO.setup(self.servo_pin, GPIO.OUT)
-        GPIO.setup(self.trig_pin, GPIO.OUT)
-        GPIO.setup(self.echo_pin, GPIO.IN)
-        self.pwm_servo = GPIO.PWM(self.servo_pin, 50) # create a PWM signal oon the servo pin with 50Hz (50 cycles per second)
-        self.pwm_servo.start(0)
-        
 
-        # Start the test loop
-        self.timer = self.create_timer(1.0, self.publish_scan)  # 1 Hz
+        if HARDWARE_AVAILABLE:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.servo_pin, GPIO.OUT)
+            GPIO.setup(self.trig_pin, GPIO.OUT)
+            GPIO.setup(self.echo_pin, GPIO.IN)
+            self.pwm_servo = GPIO.PWM(self.servo_pin, 50) # create a PWM signal oon the servo pin with 50Hz (50 cycles per second)
+            self.pwm_servo.start(0)
+        else:
+            # Simulation setup
+            self.get_logger().info("No hardware detected. Publishing fake data for RViz testing.")
+        
+        self.timer = self.create_timer(0.5, self.timer_callback) 
+
+        # Start the test loop , i guess this overkill for the code 
+        # self.timer = self.create_timer(1.0, self.publish_scan)  # 1 Hz
+
+    
+    def timer_callback(self):
+        # Prevent overlapping scans if the previous one hasn't finished (though sequential code blocks this naturally)
+        self.publish_scan()
 
     # Temporary test function
     def read_distance(self, angle):
@@ -46,10 +66,16 @@ class EsibotSensors(Node):
             dist = self.range_max
         return dist
         '''
-        
-        # REAL HARDWARE VERSION
-        self.set_servo_angle(angle) # rotate servo to angle
-        return self.hc_sr04_distance() # measure real distance
+        if HARDWARE_AVAILABLE:
+            # REAL HARDWARE VERSION
+            self.set_servo_angle(angle) # rotate servo to angle
+            return self.hc_sr04_distance() # measure real distance
+        else:
+            # --- SIMULATION MODE ---
+            # Generate a random distance for testing RViz
+            # Simulates a wall 1 meter away with some noise
+            time.sleep(0.01) # Simulate measurement delay
+            return 1.0 + random.uniform(-0.05, 0.05)
         
 
     
@@ -83,7 +109,7 @@ class EsibotSensors(Node):
     def publish_scan(self):
         msg = LaserScan() # create LiDAR message 
         msg.header.stamp = self.get_clock().now().to_msg() # take the exact time when data is created 
-        msg.header.frame_id = 'laser_link'
+        msg.header.frame_id = 'ultrasound_sensor'
 
         msg.angle_min = self.angle_min
         msg.angle_max = self.angle_max
@@ -109,9 +135,15 @@ class EsibotSensors(Node):
 def main(args=None):
     rclpy.init(args=args) # start ROS2 
     node = EsibotSensors() # create node 
-    rclpy.spin(node) # keep node running 
-    node.destroy_node() # clean and shuttdown 
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if HARDWARE_AVAILABLE:
+            GPIO.cleanup()
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
