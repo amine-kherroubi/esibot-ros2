@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd"
+            schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  esibot_slam — package.xml
+  ==========================
+  SLAM configuration package for the EsiBot robot.
+  Responsible for Task 3.5 — SLAM with slam_toolbox
+
+  This package contains:
+    • SLAM parameters tuned for the HC-SR04 + SG90 rotating ultrasound radar
+    • Launch files for Gazebo Harmonic simulation and real hardware (Raspberry Pi 4)
+    • RViz2 configuration for live map visualization
+    • A map-saving launch file (produces Task deliverable #4: .pgm + .yaml)
+
+  Runtime dependencies:
+    • slam_toolbox      → main SLAM package (C++), online_async algorithm
+    • esibot_description → URDF model, TF tree via robot_state_publisher
+    • esibot_sensors     → radar_node that publishes /scan  [hardware only]
+    • esibot_bringup     → esibot_driver that publishes /odom [hardware only]
+    • topic_tools        → relay node: /ultrasound_raw → /scan [simulation only]
+    • nav2_map_server    → map_saver_cli to save the SLAM map to disk
+
+  ROS 2 distribution : Jazzy Jalisco
+  Gazebo              : Harmonic  (gz sim)
+  Build system        : ament_cmake (C++)
+-->
+<package format="3">
+
+  <name>esibot_slam</name>
+  <version>0.1.0</version>
+
+  <description>
+    SLAM package for the EsiBot robot — Task 3.5.
+    Configures and launches slam_toolbox in online_async mode to build a 2D
+    occupancy map using the rotating ultrasound radar (HC-SR04 + SG90 servo).
+    Supports both Gazebo Harmonic simulation and real hardware on Raspberry Pi 4.
+  </description>
+
+  <maintainer email="esibot@esi.dz">EsiBot Team (Task 3.5 — SLAM)</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- ── Build tool ────────────────────────────────────────────────────── -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- ── C++ compile-time dependencies ────────────────────────────────── -->
+  <depend>rclcpp</depend>
+  <depend>slam_toolbox</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+
+  <!-- ── Runtime dependencies (used in launch files) ───────────────────── -->
+
+  <!--
+    esibot_description: provides the robot URDF and robot_state_publisher.
+    Required so the TF tree exists: base_footprint → base_link → ultrasound_sensor
+  -->
+  <exec_depend>esibot_description</exec_depend>
+
+  <!--
+    esibot_sensors: provides radar_node which publishes /scan (hardware mode).
+    In simulation, the Gazebo gpu_lidar sensor replaces this node.
+  -->
+  <exec_depend>esibot_sensors</exec_depend>
+
+  <!--
+    topic_tools: provides the relay node.
+    Used in simulation to forward /ultrasound_raw → /scan,
+    because gz_bridge publishes the Gazebo LaserScan on /ultrasound_raw.
+  -->
+  <exec_depend>topic_tools</exec_depend>
+
+  <!--
+    nav2_map_server: provides map_saver_cli.
+    Used by save_map.launch.py to save the built SLAM map to .pgm + .yaml files.
+  -->
+  <exec_depend>nav2_map_server</exec_depend>
+
+  <!--
+    rviz2: 3D visualization of the map, LaserScan, robot model, and TF tree.
+  -->
+  <exec_depend>rviz2</exec_depend>
+
+  <!--
+    teleop_twist_keyboard: keyboard teleoperation for manual map building.
+    Launched optionally via slam.launch.py with teleop:=true
+  -->
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+
+  <!-- ── Tests ─────────────────────────────────────────────────────────── -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

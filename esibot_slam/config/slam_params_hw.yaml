@@ -1,0 +1,126 @@
+# =============================================================================
+# esibot_slam — config/slam_params_hw.yaml
+# =============================================================================
+# slam_toolbox parameters tuned for REAL HARDWARE (Raspberry Pi 4 + HC-SR04).
+#
+# Key differences compared to simulation (slam_params_sim.yaml):
+#   • use_sim_time: false      → wall clock (no Gazebo running)
+#   • scan_topic: /scan        → radar_node (esibot_sensors) publishes here directly
+#   • minimum_time_interval: 0.5 s → HC-SR04 radar is slow (1 full sweep per 0.5–1 s)
+#   • map_update_interval: 5.0 s  → save CPU resources on the Raspberry Pi 4
+#   • transform_timeout: 1.0 s    → UART or WiFi link may introduce latency
+#
+# IMPORTANT — TF frame mismatch on hardware:
+#   radar_node (esibot_sensors) publishes LaserScan with frame_id = 'laser_link'.
+#   The EsiBot URDF defines the sensor link as 'ultrasound_sensor'.
+#   → slam_toolbox cannot find the TF path base_footprint → laser_link.
+#   → Solution: slam.launch.py (mode:=hw) launches a static_transform_publisher
+#     that broadcasts a zero transform: ultrasound_sensor → laser_link.
+#     This attaches 'laser_link' to the existing TF tree without modifying
+#     any code from the esibot_sensors team.
+#
+# Algorithm: online_async — recommended for slow, irregular sensors.
+# =============================================================================
+
+slam_toolbox:
+  ros__parameters:
+
+    # ── Solver plugin ───────────────────────────────────────────────────────
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # ── TF frame names ──────────────────────────────────────────────────────
+    # Must exactly match the EsiBot URDF frame names.
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+
+    # ── Scanner topic ───────────────────────────────────────────────────────
+    # radar_node (esibot_sensors package) publishes the LaserScan on /scan.
+    # No relay needed — the scan arrives directly from the hardware node.
+    scan_topic: /scan
+
+    # ── Operating mode ──────────────────────────────────────────────────────
+    mode: mapping
+
+    # ── System clock (no simulation) ────────────────────────────────────────
+    # use_sim_time MUST be false on real hardware — no /clock topic available.
+    use_sim_time: false
+
+    # ── TF publish rate ─────────────────────────────────────────────────────
+    # 20 Hz — reduced vs simulation to spare Raspberry Pi 4 CPU cycles.
+    transform_publish_period: 0.05
+
+    # ── Map update interval ─────────────────────────────────────────────────
+    # 5 s between map reconstructions — important to keep the RPi 4 responsive.
+    # Decrease to 3.0 if you have the 4 GB RAM model and want faster updates.
+    map_update_interval: 5.0
+
+    # ── Map resolution ──────────────────────────────────────────────────────
+    # 5 cm per cell — standard for indoor SLAM.
+    resolution: 0.05
+
+    # ── HC-SR04 maximum range ────────────────────────────────────────────────
+    # Physical specification: 2 cm – 4 m, precision ±3 mm.
+    # Readings beyond 4.0 m are unreliable and discarded.
+    max_laser_range: 4.0
+
+    # ── Scan throttling ─────────────────────────────────────────────────────
+    # 1 = process every scan. The radar is already slow (1–2 Hz),
+    # so every measurement counts — do not skip any.
+    throttle_scans: 1
+
+    # ── Minimum time between processed scans ────────────────────────────────
+    # The HC-SR04 on SG90 completes one 180° sweep in 0.5–1 s.
+    # Setting 0.5 s avoids re-processing scans before the servo finishes a sweep.
+    minimum_time_interval: 0.5
+
+    # ── Minimum robot displacement to trigger SLAM update ───────────────────
+    # Keep values low because the robot moves slowly with DC motors.
+    minimum_travel_distance: 0.10   # 10 cm
+    minimum_travel_heading: 0.20    # ~11 degrees
+
+    # ── Scan matching ───────────────────────────────────────────────────────
+    use_scan_matching: true
+    use_scan_barycenter: true
+
+    # ── Scan buffer ─────────────────────────────────────────────────────────
+    # Reduce scan_buffer_size to 5 if running on the 2 GB RAM model.
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+
+    # ── Fine matching parameters ────────────────────────────────────────────
+    link_match_minimum_response_fine: 0.1
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+
+    fine_search_angle_offset: 0.00349
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
+
+    # ── TF lookup timeout ───────────────────────────────────────────────────
+    # 1.0 s — accounts for potential UART or WiFi latency between ESP32 and RPi.
+    transform_timeout: 1.0
+
+    # ── TF buffer duration ──────────────────────────────────────────────────
+    tf_buffer_duration: 30.0
+
+    # ── Ceres solver memory ─────────────────────────────────────────────────
+    # 40 MB — fits comfortably on a 2 GB RPi 4 alongside ROS2 and Nav2.
+    stack_size_to_use: 40000000
+
+    # ── Interactive mode ────────────────────────────────────────────────────
+    enable_interactive_mode: true
+
+    # ── Map saver ───────────────────────────────────────────────────────────
+    use_map_saver: true
+
+    # ── Debug logging ───────────────────────────────────────────────────────
+    debug_logging: false
