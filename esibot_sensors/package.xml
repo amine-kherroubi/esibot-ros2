@@ -3,10 +3,9 @@
 <package format="3">
   <name>esibot_sensors</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <description>Pseudo Lidar node for EsiBo</description>
   <maintainer email="amira@todo.todo">amira</maintainer>
-  <license>TODO: License declaration</license>
-
+  <license>License</license>
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>

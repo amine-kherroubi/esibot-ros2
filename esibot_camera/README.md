@@ -11,6 +11,11 @@ Ce package capture le flux vidéo MJPEG d'une **ESP32-CAM** via WiFi (HTTP),
 applique un traitement **OpenCV** (resize),  
 et publie les images sur le topic ROS2 `/camera/image_raw`.
 
+It supports two operation modes:
+
+Hardware Mode: Connects to a real ESP32-CAM on the local network.
+Simulation Mode: Connects to a local mock server for testing without physical hardware.
+
 ```
 ESP32-CAM (WiFi)
       │  HTTP MJPEG  http://192.168.1.80/stream
@@ -87,15 +92,38 @@ esibot_camera_node:
 ---
 
 ##  Lancement
+# Option 1: Real Hardware
+Use this when you have the ESP32-CAM connected to WiFi
 
+Command:
 ```bash
-source ~/robot_ws/install/setup.bash
-ros2 launch esibot_camera camera.launch.py esp32_ip:=192.168.1.80 #utiliser ici adresse ip de esp32
+ros2 launch esibot_camera camera.launch.py esp32_ip:=<YOUR_ESP32_IP>
+```
+Example: 
+```bash
+ros2 launch esibot_camera camera.launch.py esp32_ip:=192.168.1.45
+```
+
+# Option 2: Simulation / Mock Server (No Hardware) : 
+start the visualization bridge: 
+ ```bash
+ ros2 launch esibot_description display.launch.py
+ ```
+
+Run the Fake Server : 
+```bash
+python3 fake_esp32_server.py
+```
+
+Run the ROS 2 Node  : 
+Open a second terminal and point the camera node to your localhost IP (127.0.0.1) and the server port (8080):
+```bash
+ros2 launch esibot_camera camera.launch.py esp32_ip:=127.0.0.1 esp32_port:=8080
 ```
 
 ---
 
-##  Visualisation
+##  other Visualisation options
 
 **Option 1 — Navigateur** : ouvrir directement `http://192.168.1.80/stream`
 

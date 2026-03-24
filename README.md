@@ -90,6 +90,13 @@ This starts the virtual robot in a Gazebo world.
 ```bash
 ros2 launch esibot_gazebo sim.launch.py
 ```
+
+###  Visualizing Model Only 
+Use this to inspect the robot geometry or test hardware drivers without the overhead of Gazebo physics.
+Features: Loads the URDF and publishes TFs. Opens Foxglove bridge.
+```bash
+ros2 launch esibot_description display.launch.py
+```
 ---
 
 
