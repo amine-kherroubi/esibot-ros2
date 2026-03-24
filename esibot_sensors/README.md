@@ -178,6 +178,7 @@ ros2 run rviz2 rviz2
 
 Ajouter un display **LaserScan** avec le topic `/scan`.
 Cela permet d’afficher les mesures du capteur sous forme de scan (type radar) en temps réel.
+
 ---
 
 ## Intégration  
