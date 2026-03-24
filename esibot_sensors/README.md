@@ -14,7 +14,7 @@ Ce package implémente un **LiDAR virtuel (pseudo-LiDAR)** en utilisant :
 Le servo effectue un balayage de **0° à 180°**, et le capteur mesure la distance à chaque angle.  
 Les données sont converties en message ROS2 `LaserScan`, compatible avec SLAM et Nav2.
 
-
+```
 Servo (angle θ)
 ↓
 HC-SR04 (distance)
@@ -24,7 +24,7 @@ radar_node
 /scan (LaserScan)
 ↓
 SLAM / Navigation
-
+```
 
 ---
 
@@ -45,34 +45,35 @@ SLAM / Navigation
 - Python 3  
 
 Option hardware (Raspberry Pi) :  
-
+```bash
 pip install RPi.GPIO
-
+```
 
 ---
 
 ## Installation  
 
 ### 1. Installer les dépendances
-
+```bash
 cd ~/robot_ws
 rosdep update
 rosdep install --from-paths src --ignore-src -r -y
-
+```
 ### 2. Compiler le workspace
+```bash
 cd ~/robot_ws
 colcon build --symlink-install --packages-select esibot_sensors
 source install/setup.bash
-
+```
 ---
 
 ## Lancement  
 
 ### Lancer le nœud  
-
+```bash
 ros2 run esibot_sensors radar_node  
 
----
+```
 
 ## Comportement  
 
@@ -134,7 +135,7 @@ Les GPIO du Raspberry Pi sont en 3.3V alors que le HC-SR04 envoie 5V sur ECHO
 ---
 
 ## Structure du package  
-
+```
 esibot_sensors/
 ├── package.xml
 ├── setup.py
@@ -146,7 +147,7 @@ esibot_sensors/
 │ ├── init.py
 │ └── radar_node.py
 
-
+```
 ---
 
 ## Différence avec un LiDAR réel  
@@ -162,18 +163,19 @@ esibot_sensors/
 ## Tests  
 
 Vérifier les topics :
-
+```bash
 ros2 topic list
 ros2 topic echo /scan
- 
+ ```
 La première commande permet de vérifier les topics actifs. Le topic /scan doit apparaître, ce qui confirme que le node du capteur publie correctement. Et la deuxième affiche en temps réel les données du capteur sur /scan, permettant de vérifier que les valeurs de distance sont bien envoyées et mises à jour.
 
 ### Visualisation :
 en utilisant l'outil de visualisation des données ROS2 "RViz2"
-
+```bash
 ros2 run rviz2 rviz2
-
+```
 ### Configuration dans RViz2 :
+
 Ajouter un display **LaserScan** avec le topic `/scan`.
 Cela permet d’afficher les mesures du capteur sous forme de scan (type radar) en temps réel.
 ---
