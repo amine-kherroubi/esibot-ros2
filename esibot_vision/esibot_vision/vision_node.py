@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """
-vision_node.py — EsiBot vision temps réel
+vision_node.py — Nœud ROS 2 vision EsiBot
 ==========================================
-Caméra ESP32-CAM inclinée 30-45° vers le bas, hauteur ~15-20cm.
-  - Partie HAUTE de l'image → devant le robot (obstacles, murs)
-  - Partie BASSE de l'image → sol devant le robot (ligne)
+Intègre : LaneDetector (OpenCV) + SignDetector (YOLOv8n GTSRB) + ObstacleDetector (YOLOv8n COCO)
 
 Topics souscrits :
-  /camera/image_raw           sensor_msgs/Image
+  /image_raw                  sensor_msgs/Image
 
 Topics publiés :
-  /vision/line_position       std_msgs/Float32   [-1.0 gauche … 0.0 centre … +1.0 droite]
-  /vision/obstacle_detected   std_msgs/Bool
-  /vision/detections          std_msgs/String    (JSON résumé)
-  /camera/image_annotated     sensor_msgs/Image  (si publish_annotated=True)
+  /camera/image_annotated     sensor_msgs/Image
+  /esibot/lane_error          std_msgs/Float32   [-1.0 … +1.0]
+  /esibot/lane_status         std_msgs/String    [IN_LANE|ONE_LANE|LANE_LEFT|LANE_RIGHT|NO_LANE]
+  /esibot/signs               std_msgs/String    JSON list
+  /esibot/obstacles           std_msgs/String    JSON list
+  /esibot/obstacle_in_lane    std_msgs/Bool
 """
 
 import json
+import os
 import threading
 import time
 
@@ -27,80 +28,109 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32, String
 
-
-# ─── Constantes couleurs annotation ──────────────────────────────────────────
-COLOR_CYAN   = (255, 255,   0)   # ROI ligne
-COLOR_GRAY   = (160, 160, 160)   # ROI obstacle
-COLOR_YELLOW = (  0, 255, 255)   # contour ligne + centroïde
-COLOR_GREEN  = (  0, 255,   0)   # DETECTE
-COLOR_ORANGE = (  0, 165, 255)   # PROCHE
-COLOR_RED    = (  0,   0, 255)   # TRES_PROCHE
-COLOR_WHITE  = (255, 255, 255)   # texte
+from esibot_vision.lane_detector    import LaneDetector
+from esibot_vision.sign_detector    import SignDetector
+from esibot_vision.obstacle_detector import ObstacleDetector
+from esibot_vision.utils            import FPSCounter, draw_hud
 
 
 class VisionNode(Node):
 
     def __init__(self):
-        super().__init__('vision_node')
+        super().__init__("vision_node")
 
-        # ── Paramètres image ──────────────────────────────────────────────
-        self.declare_parameter('image_width',  320)
-        self.declare_parameter('image_height', 240)
+        # ── Paramètres ────────────────────────────────────────────────────
+        self.declare_parameter("image_width",        320)
+        self.declare_parameter("image_height",       240)
 
-        # ── Paramètres ligne ──────────────────────────────────────────────
-        self.declare_parameter('line_roi_ratio',  0.55)
-        self.declare_parameter('line_threshold',  60)
-        self.declare_parameter('line_color',      'dark')
+        # Lane
+        self.declare_parameter("lane_roi_ratio",     0.45)
+        self.declare_parameter("lane_threshold",     60)
+        self.declare_parameter("lane_min_area",      200)
 
-        # ── Paramètres obstacle ───────────────────────────────────────────
-        self.declare_parameter('obstacle_roi_ratio', 0.40)
-        self.declare_parameter('obstacle_min_area',  1500)
+        # Signs
+        self.declare_parameter("sign_model_path",   "")
+        self.declare_parameter("sign_conf",          0.50)
 
-        # ── Publication image annotée ─────────────────────────────────────
-        self.declare_parameter('publish_annotated', True)
+        # Obstacles
+        self.declare_parameter("obstacle_model_path", "")
+        self.declare_parameter("obstacle_conf",        0.40)
+        self.declare_parameter("obstacle_roi_ratio",   0.55)
+        self.declare_parameter("lane_width_ratio",     0.50)
+
+        # Misc
+        self.declare_parameter("publish_annotated",  True)
+        self.declare_parameter("process_rate",       15.0)
 
         self._load_params()
 
-        # ── État interne thread-safe ───────────────────────────────────────
+        # ── Détecteurs ────────────────────────────────────────────────────
+        self._lane = LaneDetector(
+            roi_ratio =self.lane_roi_ratio,
+            threshold =self.lane_threshold,
+            min_area  =self.lane_min_area,
+        )
+        self._signs = SignDetector(
+            model_path     =self.sign_model_path,
+            conf_threshold =self.sign_conf,
+        )
+        self._obstacles = ObstacleDetector(
+            model_path       =self.obstacle_model_path,
+            conf_threshold   =self.obstacle_conf,
+            roi_ratio        =self.obstacle_roi_ratio,
+            lane_width_ratio =self.lane_width_ratio,
+        )
+
+        # ── État thread-safe ──────────────────────────────────────────────
         self._frame           = None
         self._frame_lock      = threading.Lock()
         self._last_frame_time = time.time()
 
+        self._fps = FPSCounter()
+
         # ── Subscriber ────────────────────────────────────────────────────
-        self.create_subscription(Image, '/camera/image_raw', self._cb_image, 10)
+        self.create_subscription(Image, "/image_raw", self._cb_image, 10)
 
         # ── Publishers ────────────────────────────────────────────────────
-        self._pub_line       = self.create_publisher(Float32, '/vision/line_position',     10)
-        self._pub_obstacle   = self.create_publisher(Bool,    '/vision/obstacle_detected', 10)
-        self._pub_detections = self.create_publisher(String,  '/vision/detections',        10)
-        self._pub_annotated  = self.create_publisher(Image,   '/camera/image_annotated',   10)
+        self._pub_annotated      = self.create_publisher(Image,   "/camera/image_annotated",  10)
+        self._pub_lane_error     = self.create_publisher(Float32, "/esibot/lane_error",        10)
+        self._pub_lane_status    = self.create_publisher(String,  "/esibot/lane_status",       10)
+        self._pub_signs          = self.create_publisher(String,  "/esibot/signs",             10)
+        self._pub_obstacles      = self.create_publisher(String,  "/esibot/obstacles",         10)
+        self._pub_obstacle_lane  = self.create_publisher(Bool,    "/esibot/obstacle_in_lane",  10)
 
-        # ── Timer traitement 10 Hz ────────────────────────────────────────
-        self.create_timer(1.0 / 30.0, self._process)  # 30 Hz max
+        # ── Timer ─────────────────────────────────────────────────────────
+        self.create_timer(1.0 / self.process_rate, self._process)
 
-        self._fps_counter = 0
-        self._fps_time    = time.time()
-        self._fps         = 0.0
-
-        self.get_logger().info('vision_node démarré — 10 Hz')
+        self.get_logger().info(
+            f"vision_node démarré — {self.process_rate:.0f} Hz | "
+            f"lane OK | "
+            f"signs {'OK' if self._signs.available else 'DISABLED'} | "
+            f"obstacles {'OK' if self._obstacles.available else 'DISABLED'}"
+        )
 
     # ─────────────────────────────────────────────────────────────────────
     def _load_params(self):
-        self.img_w  = self.get_parameter('image_width').value
-        self.img_h  = self.get_parameter('image_height').value
+        self.img_w = self.get_parameter("image_width").value
+        self.img_h = self.get_parameter("image_height").value
 
-        self.line_roi_ratio  = float(self.get_parameter('line_roi_ratio').value)
-        self.line_threshold  = int(self.get_parameter('line_threshold').value)
-        self.line_color      = self.get_parameter('line_color').value
+        self.lane_roi_ratio  = float(self.get_parameter("lane_roi_ratio").value)
+        self.lane_threshold  = int(self.get_parameter("lane_threshold").value)
+        self.lane_min_area   = int(self.get_parameter("lane_min_area").value)
 
-        self.obstacle_roi_ratio = float(self.get_parameter('obstacle_roi_ratio').value)
-        self.obstacle_min_area  = int(self.get_parameter('obstacle_min_area').value)
+        self.sign_model_path = self.get_parameter("sign_model_path").value
+        self.sign_conf       = float(self.get_parameter("sign_conf").value)
 
-        self.publish_annotated = bool(self.get_parameter('publish_annotated').value)
+        self.obstacle_model_path  = self.get_parameter("obstacle_model_path").value
+        self.obstacle_conf        = float(self.get_parameter("obstacle_conf").value)
+        self.obstacle_roi_ratio   = float(self.get_parameter("obstacle_roi_ratio").value)
+        self.lane_width_ratio     = float(self.get_parameter("lane_width_ratio").value)
+
+        self.publish_annotated = bool(self.get_parameter("publish_annotated").value)
+        self.process_rate      = float(self.get_parameter("process_rate").value)
 
     # ─────────────────────────────────────────────────────────────────────
     def _cb_image(self, msg: Image):
-        """Réception image — conversion et stockage thread-safe."""
         frame = np.frombuffer(msg.data, dtype=np.uint8).reshape(
             (msg.height, msg.width, 3)).copy()
         with self._frame_lock:
@@ -109,243 +139,89 @@ class VisionNode(Node):
 
     # ─────────────────────────────────────────────────────────────────────
     def _process(self):
-        """Traitement principal appelé par le timer 10 Hz."""
-
-        if time.time() - self._last_frame_time > 5.0 and self._frame is not None:
-            self.get_logger().warn('Aucune frame depuis 5s — flux caméra interrompu ?')
-
         with self._frame_lock:
             if self._frame is None:
                 return
             frame = self._frame.copy()
 
-        h, w = frame.shape[:2]
+        if time.time() - self._last_frame_time > 5.0:
+            self.get_logger().warn("Aucune frame depuis 5s", throttle_duration_sec=5.0)
 
-        # ── Calcul FPS ────────────────────────────────────────────────────
-        self._fps_counter += 1
-        now = time.time()
-        if now - self._fps_time >= 1.0:
-            self._fps = self._fps_counter / (now - self._fps_time)
-            self._fps_counter = 0
-            self._fps_time = now
-
+        self._fps.tick()
         annotated = frame.copy() if self.publish_annotated else None
 
-        # ── ROI ligne : bas de l'image ────────────────────────────────────
-        line_roi_y = int(h * (1.0 - self.line_roi_ratio))
-        # ── ROI obstacle : haut de l'image ───────────────────────────────
-        obs_roi_y  = int(h * self.obstacle_roi_ratio)
+        # ── A) Détection voie ─────────────────────────────────────────────
+        lane_error, lane_status, annotated, left_cx, right_cx = \
+            self._lane.detect(frame, annotated)
 
-        if annotated is not None:
-            cv2.rectangle(annotated, (0, line_roi_y), (w - 1, h - 1), COLOR_CYAN, 1)
-            cv2.rectangle(annotated, (0, 0), (w - 1, obs_roi_y), COLOR_GRAY, 1)
+        # ── B) Détection panneaux (toute l'image) ─────────────────────────
+        sign_detections, annotated = self._signs.detect(frame, annotated)
 
-        # ── A) Détection ligne ────────────────────────────────────────────
-        line_position, line_detected = self._detect_line(
-            frame, h, w, line_roi_y, annotated)
+        # ── C) Détection obstacles (uniquement entre les 2 rubans) ────────
+        obstacle_detections, obstacle_in_lane, annotated = \
+            self._obstacles.detect(frame, annotated,
+                                   lane_left_cx=left_cx,
+                                   lane_right_cx=right_cx)
 
-        # ── B) Détection obstacles ────────────────────────────────────────
-        obstacle_detected, obstacles, annotated = self._detect_obstacle(
-            frame, annotated)
+        # ── Publication ───────────────────────────────────────────────────
+        msg_err = Float32(); msg_err.data = float(lane_error)
+        self._pub_lane_error.publish(msg_err)
 
-        # ── Publication topics ────────────────────────────────────────────
-        msg_line = Float32()
-        msg_line.data = float(line_position)
-        self._pub_line.publish(msg_line)
+        msg_status = String(); msg_status.data = lane_status
+        self._pub_lane_status.publish(msg_status)
 
-        msg_obs = Bool()
-        msg_obs.data = obstacle_detected
-        self._pub_obstacle.publish(msg_obs)
+        msg_signs = String()
+        msg_signs.data = json.dumps([
+            {"label": d["label"], "conf": d["conf"]} for d in sign_detections
+        ])
+        self._pub_signs.publish(msg_signs)
 
-        proximity_rank  = {'TRES_PROCHE': 2, 'PROCHE': 1, 'DETECTE': 0}
-        worst_proximity = max(obstacles, key=lambda o: proximity_rank[o['proximity']])['proximity'] \
-            if obstacles else ''
+        msg_obs = String()
+        msg_obs.data = json.dumps([
+            {"label": o["label"], "conf": o["conf"],
+             "in_lane": o["in_lane"], "proximity": o["proximity"]}
+            for o in obstacle_detections
+        ])
+        self._pub_obstacles.publish(msg_obs)
 
-        detections = {
-            'line_position':      round(line_position, 3),
-            'line_detected':      line_detected,
-            'obstacle_detected':  obstacle_detected,
-            'obstacle_count':     len(obstacles),
-            'obstacle_proximity': worst_proximity,
-            'obstacles':          [{'proximity': o['proximity'], 'area': o['area']} for o in obstacles],
-        }
-        msg_det = String()
-        msg_det.data = json.dumps(detections)
-        self._pub_detections.publish(msg_det)
+        msg_in_lane = Bool(); msg_in_lane.data = obstacle_in_lane
+        self._pub_obstacle_lane.publish(msg_in_lane)
 
-        # ── Logs ──────────────────────────────────────────────────────────
-        if line_detected:
-            self.get_logger().info(
-                f'Ligne : position={line_position:+.2f}', throttle_duration_sec=1.0)
-        if obstacle_detected:
-            self.get_logger().warn(
-                f'{len(obstacles)} obstacle(s) — pire proximité : {worst_proximity}',
-                throttle_duration_sec=0.5)
-
-        # ── Image annotée ─────────────────────────────────────────────────
+        # ── HUD + image annotée ───────────────────────────────────────────
         if self.publish_annotated and annotated is not None:
-            self._draw_overlay(annotated, h, w, line_position, line_detected,
-                               obstacle_detected, worst_proximity)
+            draw_hud(
+                img             = annotated,
+                fps             = self._fps.get(),
+                lane_error      = lane_error,
+                lane_status     = lane_status,
+                sign_labels     = [d["label"] for d in sign_detections],
+                obstacle_in_lane= obstacle_in_lane,
+            )
             self._publish_image(annotated)
 
-    # ─────────────────────────────────────────────────────────────────────
-    def _detect_line(self, frame, h, w, roi_y, annotated):
-        """
-        Détection ligne noire sur fond clair.
-        ROI = ligne_roi_y … bas de l'image.
-        Retourne (position_normalisée, ligne_détectée).
-        """
-        roi  = frame[roi_y:h, :]
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        # ── Logs ──────────────────────────────────────────────────────────
+        if lane_status != "IN_LANE":
+            self.get_logger().info(
+                f"Lane: {lane_status}  err={lane_error:+.2f}",
+                throttle_duration_sec=1.0)
 
-        if self.line_color == 'dark':
-            _, mask = cv2.threshold(
-                gray, self.line_threshold, 255, cv2.THRESH_BINARY_INV)
-        else:
-            _, mask = cv2.threshold(
-                gray, self.line_threshold, 255, cv2.THRESH_BINARY)
+        if sign_detections:
+            self.get_logger().info(
+                f"Panneaux: {[d['label'] for d in sign_detections]}",
+                throttle_duration_sec=1.0)
 
-        kernel = np.ones((5, 5), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-
-        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not cnts:
-            return 0.0, False
-
-        c = max(cnts, key=cv2.contourArea)
-        if cv2.contourArea(c) < 200:
-            return 0.0, False
-
-        M = cv2.moments(c)
-        if M['m00'] == 0:
-            return 0.0, False
-
-        cx = int(M['m10'] / M['m00'])
-        cy = int(M['m01'] / M['m00'])
-        position = (cx - w / 2.0) / (w / 2.0)
-
-        if annotated is not None:
-            cv2.drawContours(annotated[roi_y:], [c], -1, COLOR_YELLOW, 2)
-            cv2.circle(annotated, (cx, roi_y + cy), 7, COLOR_YELLOW, -1)
-
-        return position, True
+        if obstacle_in_lane:
+            self.get_logger().warn(
+                f"OBSTACLE EN VOIE ({len(obstacle_detections)} détecté(s))",
+                throttle_duration_sec=0.5)
 
     # ─────────────────────────────────────────────────────────────────────
-    def _detect_obstacle(self, frame, annotated):
-        """
-        Détection de TOUS les obstacles dans les 40% haut de l'image.
-
-        Stratégie : construire UN masque binaire combiné (Canny rempli + HSV),
-        puis appeler findContours UNE seule fois → pas de doublons, pas de fusion
-        parasite due à un grand kernel morphologique.
-
-        Retourne (obs_ok, obstacles, annotated) où obstacles est une liste de dicts :
-          [{'rect': (x,y,w,h), 'proximity': 'PROCHE', 'area': 1234}, ...]
-        """
-        h, w = frame.shape[:2]
-        roi_y = int(h * self.obstacle_roi_ratio)
-        roi   = frame[0:roi_y, :]
-        total_area = roi_y * w
-
-        # ── Méthode 1 : Canny → remplir les régions fermées ──────────────
-        gray  = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        blur  = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blur, 50, 150)
-        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=2)
-        mask_canny = np.zeros_like(gray)
-        cnts_tmp, _ = cv2.findContours(
-            edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(mask_canny, cnts_tmp, -1, 255, cv2.FILLED)
-
-        # ── Méthode 2 : HSV couleurs vives (rouge + orange) ───────────────
-        hsv     = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        mask_r1 = cv2.inRange(hsv, np.array([0,   120, 70]), np.array([10,  255, 255]))
-        mask_r2 = cv2.inRange(hsv, np.array([170, 120, 70]), np.array([180, 255, 255]))
-        mask_o  = cv2.inRange(hsv, np.array([10,  120, 70]), np.array([25,  255, 255]))
-        mask_hsv = cv2.bitwise_or(cv2.bitwise_or(mask_r1, mask_r2), mask_o)
-        # Kernel (3,3) : referme les trous INTERNES à un objet sans ponter 2 objets voisins
-        mask_hsv = cv2.morphologyEx(mask_hsv, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-
-        # ── Masque combiné ────────────────────────────────────────────────
-        mask_combined = cv2.bitwise_or(mask_canny, mask_hsv)
-        # MORPH_OPEN (pas CLOSE) : supprime le bruit isolé SANS combler les espaces
-        # entre deux objets proches → ils restent deux contours séparés
-        mask_combined = cv2.morphologyEx(
-            mask_combined, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-
-        cnts, _ = cv2.findContours(
-            mask_combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        obstacles = []
-
-        for c in cnts:
-            area = cv2.contourArea(c)
-            if area < self.obstacle_min_area:
-                continue
-
-            # ── Filtre solidité : rejette les contours fragmentés (bruit Canny) ──
-            hull      = cv2.convexHull(c)
-            hull_area = cv2.contourArea(hull)
-            if hull_area == 0:
-                continue
-            if (area / hull_area) < 0.35:
-                continue
-
-            ratio = area / total_area
-
-            if ratio > 0.25:
-                proximity = 'TRES_PROCHE'
-                color = COLOR_RED
-                self.get_logger().warn(
-                    'Obstacle TRES_PROCHE !', throttle_duration_sec=0.5)
-            elif ratio > 0.10:
-                proximity = 'PROCHE'
-                color = COLOR_ORANGE
-                self.get_logger().warn(
-                    'Obstacle PROCHE !', throttle_duration_sec=0.5)
-            else:
-                proximity = 'DETECTE'
-                color = COLOR_GREEN
-
-            rect = cv2.boundingRect(c)
-            obstacles.append({'rect': rect, 'proximity': proximity, 'area': int(area)})
-
-            if annotated is not None:
-                # minAreaRect → rectangle orienté au plus près de l'objet réel
-                min_rect = cv2.minAreaRect(c)
-                box = np.intp(cv2.boxPoints(min_rect))
-                cv2.drawContours(annotated, [box], -1, color, 2)
-                x, y = box[:, 0].min(), box[:, 1].min()
-                cv2.putText(annotated, proximity, (x, max(y - 5, 10)),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-        obs_ok = len(obstacles) > 0
-        return obs_ok, obstacles, annotated
-
-    # ─────────────────────────────────────────────────────────────────────
-    def _draw_overlay(self, img, h, w, line_pos, line_det, obs_det, proximity):
-        """Dessine FPS + statuts sur l'image annotée."""
-        cv2.putText(img, f'FPS:{self._fps:.1f}',
-                    (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_WHITE, 1)
-
-        line_txt = f'Ligne:{line_pos:+.2f}' if line_det else 'Ligne:--'
-        cv2.putText(img, line_txt,
-                    (5, h - 25), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_CYAN, 1)
-
-        obs_txt = f'Obs:{proximity}' if obs_det else 'Obs:aucun'
-        cv2.putText(img, obs_txt,
-                    (5, h - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45,
-                    COLOR_RED if obs_det else COLOR_WHITE, 1)
-
-    # ─────────────────────────────────────────────────────────────────────
-    def _publish_image(self, img):
-        """Publie un tableau numpy BGR comme sensor_msgs/Image."""
+    def _publish_image(self, img: np.ndarray):
         h, w = img.shape[:2]
         msg = Image()
         msg.height       = h
         msg.width        = w
-        msg.encoding     = 'bgr8'
+        msg.encoding     = "bgr8"
         msg.is_bigendian = False
         msg.step         = w * 3
         msg.data         = img.tobytes()
@@ -365,5 +241,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

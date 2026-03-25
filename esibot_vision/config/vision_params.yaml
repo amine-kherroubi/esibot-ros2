@@ -1,24 +1,25 @@
 vision_node:
   ros__parameters:
 
-    # ── Image ──────────────────────────────────────────────────────────
+    # ── Image ──────────────────────────────────────────────────────────────
     image_width:  320
     image_height: 240
 
-    # ── Détection ligne ────────────────────────────────────────────────
-    # ROI = 70% bas de l'image (sol visible)
-    line_roi_ratio:  0.55
-    # Seuil binaire inversé (ligne noire sur fond clair)
-    line_threshold:  60
-    # 'dark' = ligne sombre sur fond clair | 'light' = ligne claire sur fond sombre
-    line_color:      'dark'
+    # ── Détection voie (OpenCV) ────────────────────────────────────────────
+    lane_roi_ratio:  1.0      # toute l'image
+    lane_threshold:  60       # seuil binarisation (pixels sombres < threshold)
+    lane_min_area:   200      # aire minimale contour pour valider une ligne
 
-    # ── Détection obstacle ─────────────────────────────────────────────
-    # ROI = 40% haut de l'image (zone devant robot)
-    obstacle_roi_ratio: 0.40
-    # Aire minimale px² pour valider un obstacle (éviter faux positifs)
-    obstacle_min_area:  1500
+    # ── Détection panneaux (YOLOv8n GTSRB) ────────────────────────────────
+    sign_model_path: ""       # chemin absolu vers signs_best.pt (vide = désactivé)
+    sign_conf:       0.60     # abaissé pour mieux détecter les panneaux
 
-    # ── Options ────────────────────────────────────────────────────────
-    # Publier /camera/image_annotated (debug visuel, désactiver en prod)
+    # ── Détection obstacles (YOLOv8n COCO) ────────────────────────────────
+    obstacle_model_path: ""   # chemin absolu vers yolov8n.pt (vide = désactivé)
+    obstacle_conf:       0.40
+    obstacle_roi_ratio:  1.0  # toute l'image pour les obstacles
+    lane_width_ratio:    0.50 # fraction centrale de la largeur = zone de voie
+
+    # ── Publication ────────────────────────────────────────────────────────
     publish_annotated: true
+    process_rate:      15.0   # Hz

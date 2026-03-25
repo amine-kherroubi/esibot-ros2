@@ -2,7 +2,7 @@
 <package format="3">
   <name>esibot_vision</name>
   <version>0.0.1</version>
-  <description>Vision temps réel EsiBot — détection ligne + obstacles (ROS2 Jazzy)</description>
+  <description>Vision EsiBot — voie (OpenCV) + panneaux YOLOv8n (GTSRB) + obstacles YOLOv8n (COCO)</description>
   <maintainer email="idriss.ziadi47@gmail.com">ziadi</maintainer>
   <license>Apache-2.0</license>
 
