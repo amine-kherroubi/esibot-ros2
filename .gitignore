@@ -1,6 +1,7 @@
 ../build/
 ../install/
 ../log/
+.snapshots/
 __pycache__/
 *.pyc
 *.egg-info/
