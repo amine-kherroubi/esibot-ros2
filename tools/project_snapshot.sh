@@ -18,6 +18,14 @@ log_error()   { echo -e "${COLOR_ERROR}[ERROR]${COLOR_RESET} $1" >&2; }
 log_success() { [[ $QUIET -eq 0 ]] && echo -e "${COLOR_SUCCESS}[SUCCESS]${COLOR_RESET} $1"; }
 die()         { log_error "$1"; exit 1; }
 
+ensure_tree() {
+    if command -v tree >/dev/null 2>&1; then
+        return 0
+    fi
+
+    die "The 'tree' command is required. On Ubuntu, install with: sudo apt-get update && sudo apt-get install -y tree"
+}
+
 resolve_path() {
     if command -v realpath >/dev/null 2>&1; then
         realpath -m "$1"
@@ -135,6 +143,8 @@ TARGET_ABS="$(resolve_path "$TARGET_ABS")"
 
 [[ ! -d "$TARGET_ABS" ]] && die "Target '$TARGET_ABS' is not a valid directory."
 
+ensure_tree
+
 mkdir -p "$SNAPSHOT_DIR" || die "Cannot create snapshot directory: $SNAPSHOT_DIR"
 
 IGNORE_PATTERNS=("${DEFAULT_IGNORES[@]}" "${IGNORE_PATTERNS[@]}")
@@ -161,15 +171,11 @@ REL_ROOT="${TARGET_ABS#"$PROJECT_ROOT"/}"
 {
     echo "===== FOLDER TREE OF $REL_ROOT ====="
 
-    if command -v tree >/dev/null 2>&1; then
-        if [[ ${#IGNORE_PATTERNS[@]} -gt 0 ]]; then
-            ignore_string=$(IFS='|'; echo "${IGNORE_PATTERNS[*]}")
-            tree -a -I "$ignore_string" "$TARGET_ABS"
-        else
-            tree -a "$TARGET_ABS"
-        fi
+    if [[ ${#IGNORE_PATTERNS[@]} -gt 0 ]]; then
+        ignore_string=$(IFS='|'; echo "${IGNORE_PATTERNS[*]}")
+        tree -a -I "$ignore_string" "$TARGET_ABS"
     else
-        echo "(Notice: 'tree' command not installed. Visual tree skipped.)"
+        tree -a "$TARGET_ABS"
     fi
 
     echo -e "\n===== FILE CONTENTS =====\n"

@@ -35,4 +35,5 @@ The script skips common workspace and IDE artifacts by default: `.git`, `.snapsh
 ### Notes
 
 - Binary files are ignored automatically.
+- The script requires the `tree` command. If it’s missing, the script stops and prints an Ubuntu install example: `sudo apt-get update && sudo apt-get install -y tree`.
 - The snapshot output always stays inside the repo’s `.snapshots/` directory, even if the target is outside the repo.
