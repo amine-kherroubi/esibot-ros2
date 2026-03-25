@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(esibot_nav2)
+project(esibot_navigation)
 
 find_package(ament_cmake REQUIRED)
 

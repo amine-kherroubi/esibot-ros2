@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>esibot_nav2</name>
+  <name>esibot_navigation</name>
   <version>0.1.0</version>
   <description>Nav2 bringup and configuration for EsiBot</description>
   <maintainer email="your@email.com">Team EsiBot</maintainer>

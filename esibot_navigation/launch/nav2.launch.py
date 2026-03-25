@@ -2,10 +2,10 @@
 EsiBot Nav2 bringup (localization + navigation) on a pre-built map.
 
 Usage:
-  ros2 launch esibot_nav2 nav2.launch.py
+  ros2 launch esibot_navigation nav2.launch.py
 
 Override map or params:
-  ros2 launch esibot_nav2 nav2.launch.py \
+  ros2 launch esibot_navigation nav2.launch.py \
       map:=/absolute/path/to/your_map.yaml \
       params_file:=/absolute/path/to/nav2_params.yaml
 """
@@ -22,7 +22,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    pkg_share = get_package_share_directory("esibot_nav2")
+    pkg_share = get_package_share_directory("esibot_navigation")
     nav2_bringup_dir = get_package_share_directory("nav2_bringup")
 
     default_map = os.path.join(pkg_share, "maps", "esibot_map.yaml")
