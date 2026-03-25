@@ -6,6 +6,7 @@ IFS=$'\n\t'
 readonly COLOR_RESET="\033[0m"
 readonly COLOR_ERROR="\033[1;31m"
 readonly COLOR_INFO="\033[1;34m"
+readonly COLOR_WARN="\033[1;33m"
 readonly COLOR_SUCCESS="\033[1;32m"
 readonly COLOR_BOLD="\033[1m"
 
@@ -14,6 +15,7 @@ IGNORE_PATTERNS=()
 TARGET_REL=""
 
 log_info()    { [[ $QUIET -eq 0 ]] && echo -e "${COLOR_INFO}[INFO]${COLOR_RESET} $1"; }
+log_warn()    { [[ $QUIET -eq 0 ]] && echo -e "${COLOR_WARN}[WARN]${COLOR_RESET} $1"; }
 log_error()   { echo -e "${COLOR_ERROR}[ERROR]${COLOR_RESET} $1" >&2; }
 log_success() { [[ $QUIET -eq 0 ]] && echo -e "${COLOR_SUCCESS}[SUCCESS]${COLOR_RESET} $1"; }
 die()         { log_error "$1"; exit 1; }
@@ -158,11 +160,11 @@ OUTPUT_FILE="$SNAPSHOT_DIR/snapshot_${TARGET_SAFE}_${TIMESTAMP}.txt"
 
 > "$OUTPUT_FILE" || die "Cannot write to output file: $OUTPUT_FILE"
 
-log_info "Project Root    : $PROJECT_ROOT"
+log_info "Project Root (git repo): $PROJECT_ROOT"
 log_info "Target Directory: $TARGET_ABS"
 log_info "Output File     : $OUTPUT_FILE"
 if [[ "$TARGET_ABS/" != "$PROJECT_ROOT"/* ]]; then
-    log_info "Note            : Target is outside project root; output still in $SNAPSHOT_DIR"
+    log_warn "Target is outside the git repo root (where .git lives); output still in $SNAPSHOT_DIR"
 fi
 
 REL_ROOT="${TARGET_ABS#"$PROJECT_ROOT"/}"
