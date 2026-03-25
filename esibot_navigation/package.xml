@@ -3,7 +3,7 @@
   <name>esibot_navigation</name>
   <version>0.1.0</version>
   <description>Nav2 bringup and configuration for EsiBot</description>
-  <maintainer email="your@email.com">Team EsiBot</maintainer>
+  <maintainer email="mm_kherroubi@esi.dz">Team EsiBot</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -11,7 +11,9 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>nav2_common</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>opennav_docking</exec_depend>
   <exec_depend>rviz2</exec_depend>
 
   <export>

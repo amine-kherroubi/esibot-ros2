@@ -19,6 +19,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
@@ -39,6 +40,11 @@ def generate_launch_description():
         "params_file",
         default_value=default_params,
         description="Full path to Nav2 parameters YAML",
+    )
+    scan_topic_arg = DeclareLaunchArgument(
+        "scan_topic",
+        default_value="scan",
+        description="LaserScan topic to use for localization and costmaps",
     )
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
@@ -71,6 +77,24 @@ def generate_launch_description():
         description="Full path to RViz2 config",
     )
 
+    # Rewrite YAML to allow scan topic overrides (keeps default 'scan' standard)
+    configured_params = RewrittenYaml(
+        source_file=LaunchConfiguration("params_file"),
+        param_rewrites={
+            "amcl.ros__parameters.scan_topic": LaunchConfiguration("scan_topic"),
+            "local_costmap.local_costmap.ros__parameters.voxel_layer.scan.topic": LaunchConfiguration(
+                "scan_topic"
+            ),
+            "global_costmap.global_costmap.ros__parameters.obstacle_layer.scan.topic": LaunchConfiguration(
+                "scan_topic"
+            ),
+            "collision_monitor.ros__parameters.scan.topic": LaunchConfiguration(
+                "scan_topic"
+            ),
+        },
+        convert_types=True,
+    )
+
     # Nav2 bringup (localization + navigation)
     bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -81,7 +105,7 @@ def generate_launch_description():
             "use_localization": "True",
             "map": LaunchConfiguration("map"),
             "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "params_file": LaunchConfiguration("params_file"),
+            "params_file": configured_params,
             "autostart": LaunchConfiguration("autostart"),
             "use_composition": LaunchConfiguration("use_composition"),
             "use_respawn": LaunchConfiguration("use_respawn"),
@@ -101,6 +125,7 @@ def generate_launch_description():
         [
             map_arg,
             params_arg,
+            scan_topic_arg,
             use_sim_time_arg,
             autostart_arg,
             use_composition_arg,
