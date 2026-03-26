@@ -1,0 +1,22 @@
+# driver_params.yaml
+# ==================
+# Configuration for the esibot_driver node.
+# All values here can be overridden from the launch file or command line.
+#
+# TODO(hardware): Set serial_port to the actual port on the Raspberry Pi.
+# Check available ports with:   ls /dev/ttyUSB*   or   ls /dev/ttyAMA*
+
+esibot_driver:
+  ros__parameters:
+
+    # Serial / UART connection to ESP32
+    serial_port:  '/dev/ttyUSB0'   # TODO(hardware): confirm this port on the Pi
+    baud_rate:    115200            # must match the baud rate in ESP32 firmware
+
+    # ROS2 frame names (must match the URDF from esibot_description)
+    odom_frame:   'odom'
+    base_frame:   'base_footprint'
+
+    # How often to read encoders and publish /odom (Hz)
+    # 20 Hz is a good balance between accuracy and CPU load
+    publish_rate: 20.0
