@@ -6,7 +6,6 @@
   <description>Pseudo Lidar node for EsiBo</description>
   <maintainer email="amira@todo.todo">amira</maintainer>
   <license>License</license>
-
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>

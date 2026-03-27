@@ -148,7 +148,7 @@
   </gazebo>
 
   <!-- HC-SR04 sensor -->
-  <gazebo reference="ultrasound_sensor">
+  <gazebo reference="laser_link">
     <material>Gazebo/Blue</material>
   </gazebo>
 
