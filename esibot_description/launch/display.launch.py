@@ -1,6 +1,20 @@
+# Copyright 2026 EsiBot Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
-EsiBot Display Launch File
-===========================
+EsiBot display launch file.
+
 Purpose: visualize the robot URDF / TF tree WITHOUT launching Gazebo.
          Use this to:
            • check that the URDF parses correctly after edits
@@ -39,16 +53,10 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition, UnlessCondition
-from launch.substitutions import (
-    Command,
-    FindExecutable,
-    LaunchConfiguration,
-    PathJoinSubstitution,
-)
+from launch.conditions import IfCondition
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
@@ -83,15 +91,15 @@ def generate_launch_description():
     )
 
     use_foxglove = LaunchConfiguration("use_foxglove")
-    use_rviz     = LaunchConfiguration("use_rviz")
-    urdf_file    = LaunchConfiguration("urdf_file")
+    use_rviz = LaunchConfiguration("use_rviz")
+    urdf_file = LaunchConfiguration("urdf_file")
 
     # ── Robot description: xacro → URDF string ────────────────────────────────
     # Command() runs at launch time, not at import time.
     # The result is a string containing the full parsed URDF XML.
     robot_description = ParameterValue(
         Command([FindExecutable(name="xacro"), " ", urdf_file]),
-        value_type=str
+        value_type=str,
     )
 
     # ── Nodes ─────────────────────────────────────────────────────────────────
@@ -165,12 +173,14 @@ def generate_launch_description():
         condition=IfCondition(use_rviz),
     )
 
-    return LaunchDescription([
-        urdf_file_arg,
-        use_foxglove_arg,
-        use_rviz_arg,
-        robot_state_pub,
-        joint_state_pub_gui,
-        foxglove_bridge,
-        rviz2,
-    ])
+    return LaunchDescription(
+        [
+            urdf_file_arg,
+            use_foxglove_arg,
+            use_rviz_arg,
+            robot_state_pub,
+            joint_state_pub_gui,
+            foxglove_bridge,
+            rviz2,
+        ]
+    )

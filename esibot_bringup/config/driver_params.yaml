@@ -4,7 +4,7 @@
 esibot_driver:
   ros__parameters:
     # Serial connection to ESP32
-    serial_port: '/dev/ttyUSB0'
+    serial_port: "/dev/ttyUSB0"
     baud_rate: 115200
     serial_timeout: 0.1
 
@@ -14,13 +14,13 @@ esibot_driver:
     encoder_ticks_per_rev: 330
 
     # Frames (must match the URDF from esibot_description)
-    odom_frame: 'odom'
-    base_frame: 'base_footprint'
+    odom_frame: "odom"
+    base_frame: "base_footprint"
 
     # Topics (relative to namespace)
-    odom_topic: 'odom'
-    cmd_vel_topic: 'cmd_vel'
-    battery_topic: 'battery_state'
+    odom_topic: "odom"
+    cmd_vel_topic: "cmd_vel"
+    battery_topic: "battery_state"
 
     # Publishing
     publish_rate: 20.0

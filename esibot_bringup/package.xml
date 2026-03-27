@@ -9,8 +9,7 @@
     Publishes odom, broadcasts TF, subscribes to cmd_vel.
   </description>
 
-  <maintainer email="mm_kherroubi@esi.dz">EsiBot Team</maintainer>
-  <maintainer email="mr_zitouni@esi.dz">EsiBot Team</maintainer>
+  <maintainer email="ms_hasnaoui@esi.dz">EsiBot Team</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
@@ -24,11 +23,6 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>teleop_twist_keyboard</exec_depend>
   <exec_depend>python3-serial</exec_depend>
-
-  <test_depend>ament_copyright</test_depend>
-  <test_depend>ament_flake8</test_depend>
-  <test_depend>ament_pep257</test_depend>
-  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>
