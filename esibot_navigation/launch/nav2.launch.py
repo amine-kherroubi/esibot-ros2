@@ -48,27 +48,27 @@ def generate_launch_description():
     )
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
-        default_value="True",
+        default_value="true",
         description="Use simulation (Gazebo) clock if true",
     )
     autostart_arg = DeclareLaunchArgument(
         "autostart",
-        default_value="True",
+        default_value="true",
         description="Autostart the Nav2 stack",
     )
     use_composition_arg = DeclareLaunchArgument(
         "use_composition",
-        default_value="False",
+        default_value="false",
         description="Use composable node container",
     )
     use_respawn_arg = DeclareLaunchArgument(
         "use_respawn",
-        default_value="False",
+        default_value="false",
         description="Respawn nodes if they crash",
     )
     use_rviz_arg = DeclareLaunchArgument(
         "use_rviz",
-        default_value="True",
+        default_value="true",
         description="Launch RViz2 with Nav2 config",
     )
     rviz_config_arg = DeclareLaunchArgument(

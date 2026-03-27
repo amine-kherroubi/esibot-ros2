@@ -50,10 +50,10 @@ ros2 launch esibot_navigation nav2.launch.py \
 
 ## Caveats and Rationale
 
-1. `use_sim_time` defaults to `True` in `launch/nav2.launch.py`. On real hardware, set `use_sim_time:=False` or Nav2 will not advance time and the stack will appear frozen.
+1. `use_sim_time` defaults to `true` in `launch/nav2.launch.py`. On real hardware, set `use_sim_time:=false` or Nav2 will not advance time and the stack will appear frozen.
 2. `scan_topic` must match the actual LaserScan source. AMCL, the local costmap, the global costmap, and the collision monitor all consume this topic. If it is wrong, localization will not converge and the costmaps will be empty.
 3. Frame IDs assume `map -> odom -> base_footprint`. If your robot uses `base_link` or another base frame, update `amcl.base_frame_id`, `bt_navigator.robot_base_frame`, `local_costmap.robot_base_frame`, and `global_costmap.robot_base_frame` in `config/nav2_params.yaml`. A mismatch causes TF errors and Nav2 will fail to localize or plan.
-4. `collision_monitor.footprint_topic` is absolute (`/local_costmap/published_footprint`). In namespaced or multi-robot setups, the collision monitor will subscribe to the wrong topic. Change it to `local_costmap/published_footprint` if you use namespaces.
+4. `collision_monitor.footprint_topic` is relative (`local_costmap/published_footprint`) to stay namespace-safe. If you intentionally use absolute topics, adjust it to match your graph.
 5. The local costmap defines a `static_layer` block but does not list it in `local_costmap.plugins`, so that block is ignored. Add `static_layer` to the plugin list if you want static map data in the local costmap.
 6. The map YAML references the image with a relative path. If you move the YAML or the image, update `maps/esibot_map.yaml` or the map server will fail to load the map.
 

@@ -1,7 +1,7 @@
-from setuptools import find_packages, setup
 import os
 from glob import glob
 
+from setuptools import find_packages, setup
 package_name = 'esibot_bringup'
 
 setup(
@@ -9,7 +9,7 @@ setup(
     version='0.1.0',
     packages=find_packages(exclude=['test']),
     data_files=[
-        # Required by ROS2 to find the package
+        # Required by ROS 2 to find the package
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
@@ -24,8 +24,8 @@ setup(
     zip_safe=True,
     maintainer='EsiBot Team',
     maintainer_email='team@esibot.local',
-    description='EsiBot bringup — driver node for ESP32 motor + odometry bridge',
-    license='MIT',
+    description='EsiBot bringup - driver node for ESP32 motor + odometry bridge',
+    license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

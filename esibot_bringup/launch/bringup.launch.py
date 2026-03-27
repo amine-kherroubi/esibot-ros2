@@ -1,78 +1,94 @@
-"""
-bringup.launch.py
-=================
-Launches the full esibot_bringup stack:
-  - esibot_driver node  (odometry + motor control)
-  - teleop_twist_keyboard  (keyboard control)
-
-Usage:
-    # Default (simulation, no serial)
-    ros2 launch esibot_bringup bringup.launch.py
-
-    # With real hardware
-    ros2 launch esibot_bringup bringup.launch.py serial_port:=/dev/ttyUSB0
-"""
+"""Bring up the EsiBot driver (and optional teleop)."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    params_file = PathJoinSubstitution(
+        [FindPackageShare('esibot_bringup'), 'config', 'driver_params.yaml']
+    )
 
-    # ── Launch arguments (can be overridden from command line) ────────────────
-    serial_port_arg = DeclareLaunchArgument(
+    declare_params_file = DeclareLaunchArgument(
+        'params_file',
+        default_value=params_file,
+        description='Full path to the driver parameters file',
+    )
+
+    declare_serial_port = DeclareLaunchArgument(
         'serial_port',
         default_value='/dev/ttyUSB0',
-        description='Serial port connected to ESP32 (e.g. /dev/ttyUSB0)'
+        description='Serial port connected to the ESP32 (e.g. /dev/ttyUSB0)',
     )
 
-    baud_rate_arg = DeclareLaunchArgument(
+    declare_baud_rate = DeclareLaunchArgument(
         'baud_rate',
         default_value='115200',
-        description='UART baud rate matching ESP32 firmware setting'
+        description='UART baud rate matching ESP32 firmware',
     )
 
-    # Path to the YAML config file inside this package
-    config_file = PathJoinSubstitution([
-        FindPackageShare('esibot_bringup'),
-        'config',
-        'driver_params.yaml'
-    ])
+    declare_use_sim_time = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='false',
+        description='Use /clock if true (simulation)',
+    )
 
-    # ── esibot_driver node ────────────────────────────────────────────────────
+    declare_cmd_vel_topic = DeclareLaunchArgument(
+        'cmd_vel_topic',
+        default_value='cmd_vel',
+        description='Velocity command topic (used by driver and teleop)',
+    )
+
+    declare_use_teleop = DeclareLaunchArgument(
+        'use_teleop',
+        default_value='false',
+        description='Launch teleop_twist_keyboard in a new terminal',
+    )
+
+    declare_teleop_prefix = DeclareLaunchArgument(
+        'teleop_prefix',
+        default_value='xterm -e',
+        description='Prefix to open teleop in a separate terminal',
+    )
+
     driver_node = Node(
         package='esibot_bringup',
         executable='esibot_driver',
         name='esibot_driver',
         output='screen',
         parameters=[
-            config_file,
+            LaunchConfiguration('params_file'),
             {
-                # Command-line arguments override the YAML file
                 'serial_port': LaunchConfiguration('serial_port'),
-                'baud_rate':   LaunchConfiguration('baud_rate'),
-            }
-        ]
+                'baud_rate': LaunchConfiguration('baud_rate'),
+                'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+            },
+        ],
     )
 
-    # ── teleop_twist_keyboard ─────────────────────────────────────────────────
-    # This lets you drive the robot with W/A/S/D keys in the terminal.
-    # It publishes on /cmd_vel, which esibot_driver reads.
     teleop_node = Node(
         package='teleop_twist_keyboard',
         executable='teleop_twist_keyboard',
         name='teleop_twist_keyboard',
         output='screen',
-        prefix='xterm -e',      # opens in a separate terminal window
-        remappings=[('/cmd_vel', '/cmd_vel')]
+        prefix=LaunchConfiguration('teleop_prefix'),
+        remappings=[('cmd_vel', LaunchConfiguration('cmd_vel_topic'))],
+        condition=IfCondition(LaunchConfiguration('use_teleop')),
     )
 
     return LaunchDescription([
-        serial_port_arg,
-        baud_rate_arg,
+        declare_params_file,
+        declare_serial_port,
+        declare_baud_rate,
+        declare_use_sim_time,
+        declare_cmd_vel_topic,
+        declare_use_teleop,
+        declare_teleop_prefix,
         driver_node,
         teleop_node,
     ])

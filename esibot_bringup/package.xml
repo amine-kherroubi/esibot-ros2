@@ -4,23 +4,26 @@
   <name>esibot_bringup</name>
   <version>0.1.0</version>
   <description>
-    EsiBot bringup package — esibot_driver node.
-    Bridges the ESP32 (motors + encoders) and ROS2.
-    Publishes /odom, broadcasts /tf, subscribes to /cmd_vel.
+    EsiBot bringup package - esibot_driver node.
+    Bridges the ESP32 (motors + encoders) and ROS 2.
+    Publishes odom, broadcasts TF, subscribes to cmd_vel.
   </description>
 
-  <maintainer email="team@esibot.local">EsiBot Team</maintainer>
-  <license>MIT</license>
+  <maintainer email="mm_kherroubi@esi.dz">EsiBot Team</maintainer>
+  <maintainer email="mr_zitouni@esi.dz">EsiBot Team</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>
 
   <depend>rclpy</depend>
-  <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>tf2_ros</depend>
-  <depend>teleop_twist_keyboard</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+  <exec_depend>python3-serial</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
