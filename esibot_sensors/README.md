@@ -1,191 +1,179 @@
-# esibot_sensors  
-Package ROS2 — Tâche 3.3 : Pseudo-LiDAR (Servo + HC-SR04)  
-ROS2 Jazzy | Ubuntu 24.04  
+# esibot_sensors
+
+ROS2 package — Pseudo-LiDAR (HC-SR04 + SG90 servo)
+ROS2 Jazzy | Ubuntu 24.04
 
 ---
 
-## Description  
+## What this package does
 
-Ce package implémente un **LiDAR virtuel (pseudo-LiDAR)** en utilisant :
+Sweeps an SG90 servo from −90° to +90° (centred on the robot's forward axis),
+measures distance at each step with an HC-SR04 ultrasonic sensor, and publishes
+the result as a `sensor_msgs/LaserScan` on `/scan` — the same format slam_toolbox
+and Nav2 expect from a real LiDAR.
 
-- Un capteur ultrason HC-SR04  
-- Un servo-moteur SG90  
+It also publishes the current servo angle on `/joint_states` at each step so the
+TF tree (`servo_link`) stays accurate during the sweep.
 
-Le servo effectue un balayage de **0° à 180°**, et le capteur mesure la distance à chaque angle.  
-Les données sont converties en message ROS2 `LaserScan`, compatible avec SLAM et Nav2.
+Runs in **simulation mode** automatically when `RPi.GPIO` is not available (PC / WSL2).
+
+---
+
+## Package structure
 
 ```
-Servo (angle θ)
-↓
-HC-SR04 (distance)
-↓
-radar_node
-↓
-/scan (LaserScan)
-↓
-SLAM / Navigation
+esibot_sensors/
+├── esibot_sensors/
+│   ├── __init__.py
+│   └── radar_node.py       ← main node
+├── launch/
+│   └── radar.launch.py
+├── resource/
+│   └── esibot_sensors
+├── package.xml
+├── setup.py
+├── setup.cfg
+└── README.md
 ```
 
 ---
 
-## Principe de fonctionnement  
+## Prerequisites
 
-1. Rotation du servo (0° → 180°)  
-2. Mesure de distance à chaque angle  
-3. Stockage des données (angle, distance)  
-4. Construction du message `LaserScan`  
-5. Publication sur `/scan`  
+- ROS2 Jazzy
+- Python 3
 
----
-
-## 📦 Prérequis  
-
-- Ubuntu 24.04  
-- ROS2 Jazzy  
-- Python 3  
-
-Option hardware (Raspberry Pi) :  
+On Raspberry Pi (real hardware only):
 ```bash
 pip install RPi.GPIO
 ```
 
 ---
 
-## Installation  
+## Build
 
-### 1. Installer les dépendances
-```bash
-cd ~/robot_ws
-rosdep update
-rosdep install --from-paths src --ignore-src -r -y
-```
-### 2. Compiler le workspace
 ```bash
 cd ~/robot_ws
 colcon build --symlink-install --packages-select esibot_sensors
 source install/setup.bash
 ```
+
+> After editing `radar_node.py`, rebuild before running — the node
+> executes from the build directory, not the source directory.
+
 ---
 
-## Lancement  
+## Launch
 
-### Lancer le nœud  
+### Normal launch 
 ```bash
-ros2 run esibot_sensors radar_node  
-
+ros2 launch esibot_sensors radar.launch.py
 ```
 
-## Comportement  
+### Override GPIO pins if your wiring differs
+```bash
+ros2 launch esibot_sensors radar.launch.py \
+    servo_pin:=17 trig_pin:=27 echo_pin:=22
+```
 
-Le code détecte automatiquement l’environnement :
+### Change sweep period (seconds)
+```bash
+ros2 launch esibot_sensors radar.launch.py sweep_period:=4.0
+```
 
-- **Sans GPIO (PC)** → Mode simulation  
-  → Génération de distances aléatoires (~1 m)  
-
-- **Avec GPIO (Raspberry Pi)** → Mode réel  
-  → Utilisation du servo + capteur HC-SR04  
-
+> `sweep_period` must be longer than the worst-case sweep duration.
+> 19 steps × 110 ms (real hardware) ≈ 2.1 s. Default 3.0 s gives margin.
 
 ---
 
-## Câblage  
+## Launch parameters
 
-| Composant | Connexion |
-|----------|----------|
+| Parameter | Default | Description |
+|---|---|---|
+| `servo_pin` | 17 | BCM GPIO pin for SG90 signal |
+| `trig_pin` | 27 | BCM GPIO pin for HC-SR04 TRIG |
+| `echo_pin` | 22 | BCM GPIO pin for HC-SR04 ECHO |
+| `sweep_period` | 3.0 | Seconds between sweeps |
+| `sim_mode` | false | Force simulation mode on real hardware |
+
+---
+
+## Wiring (Raspberry Pi)
+
+| Component | Pin |
+|---|---|
 | Servo signal | GPIO 17 |
 | HC-SR04 TRIG | GPIO 27 |
-| HC-SR04 ECHO | GPIO 22 |
+| HC-SR04 ECHO | GPIO 22 (via voltage divider) |
 | VCC | 5V |
 | GND | GND |
 
-Les GPIO du Raspberry Pi sont en 3.3V alors que le HC-SR04 envoie 5V sur ECHO  
-→ utiliser un **diviseur de tension**  
+---
+
+## Topics published
+
+| Topic | Type | Rate | Description |
+|---|---|---|---|
+| `/scan` | `sensor_msgs/LaserScan` | ~0.33 Hz | Full sweep result |
+| `/joint_states` | `sensor_msgs/JointState` | 19×/sweep | Servo angle per step |
+
+### /scan field values
+
+| Field | Value |
+|---|---|
+| `frame_id` | `laser_link` |
+| `angle_min` | −π/2 (−90°, faces right) |
+| `angle_max` | +π/2 (+90°, faces left) |
+| `angle_increment` | 0.1745 rad (10°) |
+| `range_min` | 0.02 m |
+| `range_max` | 4.0 m |
+| Out-of-range value | `range_max + 1.0` (per REP-117) |
 
 ---
 
-## Topics  
+## Required nodes to run alongside
 
-| Topic | Type | Description |
-|------|------|------------|
-| /scan | sensor_msgs/LaserScan | Données du pseudo-LiDAR |
+This node only publishes `/scan` and `/joint_states`.
+It requires `robot_state_publisher` to be running (started by the display launch)
+so that `/joint_states` is consumed and `/tf` is updated.
 
----
-
-## Paramètres du scan  
-
-| Paramètre        | Valeur  | Description |
-|------------------|--------|-------------|
-| angle_min        | 0 rad  | Angle de départ du balayage (correspond à 0°, début du scan) |
-| angle_max        | π rad  | Angle final du balayage (180°, limite du servo) |
-| angle_increment  | 10°    | Pas angulaire entre deux mesures successives du capteur |
-| range_min        | 0.02 m | Distance minimale mesurable par le capteur (2 cm) |
-| range_max        | 4.0 m  | Distance maximale mesurable par le capteur (4 m) |
-| fréquence        | 1 Hz   | Nombre de scans complets effectués par seconde |
-
----
-
-## Mode TEST vs RÉEL  
-
-| Élément | Test | Réel |
-|--------|------|------|
-| Servo | simulé | réel |
-| Distance | entrée clavier | capteur HC-SR04 |
-| Topic /scan | oui | oui |
-
----
-
-## Structure du package  
-```
-esibot_sensors/
-├── package.xml
-├── setup.py
-├── setup.cfg
-├── README.md
-├── resource/
-│ └── esibot_sensors
-├── esibot_sensors/
-│ ├── init.py
-│ └── radar_node.py
-
-```
----
-
-## Différence avec un LiDAR réel  
-
-| Critère | LiDAR | EsiBot |
-|--------|------|--------|
-| Technologie | Laser | Ultrasons |
-| Rotation | 360° | 180° |
-| Coût | élevé | faible |
-
----
-
-## Tests  
-
-Vérifier les topics :
 ```bash
+# Terminal 1
+ros2 launch esibot_description display.launch.py
+
+# Terminal 2
+ros2 launch esibot_sensors radar_node.launch.py
+```
+
+---
+
+## Verify it is working
+
+```bash
+# Check topics are live
 ros2 topic list
+
+# Check scan data
 ros2 topic echo /scan
- ```
-La première commande permet de vérifier les topics actifs. Le topic /scan doit apparaître, ce qui confirme que le node du capteur publie correctement. Et la deuxième affiche en temps réel les données du capteur sur /scan, permettant de vérifier que les valeurs de distance sont bien envoyées et mises à jour.
 
-### Visualisation :
-en utilisant l'outil de visualisation des données ROS2 "RViz2"
-```bash
-ros2 run rviz2 rviz2
+# Check servo angle is sweeping
+ros2 topic echo /joint_states
+
+# Check TF chain is complete
+ros2 run tf2_tools view_frames
 ```
-### Configuration dans RViz2 :
 
-Ajouter un display **LaserScan** avec le topic `/scan`.
-Cela permet d’afficher les mesures du capteur sous forme de scan (type radar) en temps réel.
+Expected `/scan` output:
+- `frame_id: laser_link`
+- 19 values in `ranges`
+- all out-of-range readings = 5.0 (range_max + 1.0), never 0.0
 
----
+Expected `/joint_states` output:
+- `name: [servo_joint]`
+- `position` stepping from −1.5707 to +1.5707 across 19 messages per sweep
 
-## Intégration  
+Expected TF tree (from `view_frames`):
+```
+base_footprint → base_link → upper_plate → servo_base → servo_link → laser_link
+```
 
-Ce nœud est utilisé par :
-
-- slam_toolbox (cartographie)  
-- Nav2 (navigation autonome)  
-
----
