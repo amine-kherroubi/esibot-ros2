@@ -14,6 +14,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
+import math  
 
 # Try to reach the ESP32-CAM network stack.
 # If urllib itself is unavailable (headless sim host), fall back to sim mode.
@@ -181,29 +182,118 @@ class CameraStreamNode(Node):
 
     def _make_sim_frame(self) -> np.ndarray:
         """
-        Synthetic BGR test frame: animated scrolling hue gradient + info bar.
-        Gives a visually moving image so subscribers can confirm the pipeline
-        is alive — mirrors the radar node's flat-wall + Gaussian-noise fake.
+        Synthetic BGR road scene designed to exercise the vision pipeline:
         """
-        t     = time.time()
-        frame = np.zeros((self.frame_h, self.frame_w, 3), dtype=np.uint8)
-
-        # Scrolling hue gradient (advances ~30°/s)
-        for x in range(self.frame_w):
-            hue     = int((x / self.frame_w * 180 + t * 30) % 180)
-            hsv_col = np.uint8([[[hue, 220, 200]]])
-            bgr_col = cv2.cvtColor(hsv_col, cv2.COLOR_HSV2BGR)[0][0]
-            frame[:, x] = bgr_col
-
-        # Info overlay
+        t  = time.time()
+        H  = self.frame_h   # 240
+        W  = self.frame_w   # 320
+ 
+        # ── Background: white road ───────────────────────────────────────────
+        frame = np.full((H, W, 3), 240, dtype=np.uint8)   # off-white
+ 
+        # ── Vanishing point (top-centre) ─────────────────────────────────────
+        vp_x = W // 2
+        vp_y = H // 4   # horizon at 25 % from top
+ 
+        # Lane strip half-widths: narrow at horizon, wide at bottom
+        # Left strip:  from (vp_x - lw_top) to (vp_x - lw_top - sw_top)  at top
+        #              from (vp_x - lw_bot) to (vp_x - lw_bot - sw_bot)   at bottom
+        lw_top, lw_bot = 18, 70    # inner edge offset from centre
+        sw_top, sw_bot = 6,  22    # strip width
+ 
+        # Scroll offset: advances downward at 60 px/s, wraps over strip height
+        scroll = int(t * 60) % H
+ 
+        # Draw left and right strips row by row for correct perspective taper
+        for y in range(H):
+            # interpolation factor 0 (top) → 1 (bottom)
+            ratio = (y - vp_y) / (H - vp_y) if y >= vp_y else 0.0
+            ratio = max(0.0, min(1.0, ratio))
+ 
+            inner = int(vp_x - lw_top - ratio * (lw_bot - lw_top))
+            width = int(sw_top  + ratio * (sw_bot  - sw_top))
+ 
+            # Scrolling dashes: black for 80 % of a 40-px period, white gap 20 %
+            dash_period = 40
+            dash_y      = (y + scroll) % dash_period
+            color       = (20, 20, 20) if dash_y < 32 else (240, 240, 240)
+ 
+            # Left strip
+            x0l = max(0, inner - width)
+            x1l = max(0, inner)
+            if x1l > x0l:
+                frame[y, x0l:x1l] = color
+ 
+            # Right strip (mirror)
+            x0r = min(W, W - inner)
+            x1r = min(W, W - inner + width)
+            if x1r > x0r:
+                frame[y, x0r:x1r] = color
+ 
+        # ── Stop sign — appears every 8 s for 3 s ────────────────────────────
+        sign_period  = 8.0
+        sign_visible = 3.0
+        sign_phase   = t % sign_period
+ 
+        if sign_phase < sign_visible:
+            # Scale 0.3 → 1.0 over the visible window (sign approaches)
+            progress = sign_phase / sign_visible
+            scale    = 0.3 + 0.7 * progress
+            radius   = int(28 * scale)
+            cx       = W // 2
+            cy       = vp_y + int((H // 2 - vp_y) * progress)
+ 
+            # Octagon points (8-sided polygon)
+            pts = []
+            for i in range(8):
+                angle_deg = 22.5 + i * 45.0
+                angle_rad = math.radians(angle_deg)
+                px = int(cx + radius * math.cos(angle_rad))
+                py = int(cy + radius * math.sin(angle_rad))
+                pts.append([px, py])
+            pts = np.array([pts], dtype=np.int32)
+ 
+            cv2.fillPoly(frame,  pts, (0, 0, 200))     # red fill
+            cv2.polylines(frame, pts, True, (255, 255, 255), max(1, int(2 * scale)))
+ 
+            font_scale = max(0.25, 0.55 * scale)
+            text_size  = cv2.getTextSize("STOP", cv2.FONT_HERSHEY_SIMPLEX,
+                                         font_scale, 1)[0]
+            tx = cx - text_size[0] // 2
+            ty = cy + text_size[1] // 2
+            cv2.putText(frame, "STOP", (tx, ty),
+                        cv2.FONT_HERSHEY_SIMPLEX, font_scale,
+                        (255, 255, 255), max(1, int(scale)), cv2.LINE_AA)
+ 
+        # ── Obstacle — gray rectangle, scrolls in every 10 s for 4 s ─────────
+        obs_period  = 10.0
+        obs_visible = 4.0
+        obs_phase   = t % obs_period
+ 
+        if obs_phase < obs_visible:
+            progress = obs_phase / obs_visible
+            # Obstacle appears at top of lane and scrolls to bottom
+            obs_w = int(50 + 30 * progress)   # widens as it approaches
+            obs_h = int(20 + 15 * progress)
+            obs_x = (W - obs_w) // 2
+            obs_y = int(vp_y + (H - vp_y - obs_h) * progress)
+            cv2.rectangle(frame,
+                          (obs_x, obs_y),
+                          (obs_x + obs_w, obs_y + obs_h),
+                          (100, 100, 100), -1)
+            cv2.rectangle(frame,
+                          (obs_x, obs_y),
+                          (obs_x + obs_w, obs_y + obs_h),
+                          (40, 40, 40), 1)
+ 
+        # ── Info overlay ─────────────────────────────────────────────────────
         ts = time.strftime("%H:%M:%S")
-        cv2.putText(
-            frame, f"SIM {self.frame_w}x{self.frame_h} {ts}",
-            (4, 14), cv2.FONT_HERSHEY_SIMPLEX,
-            0.4, (255, 255, 255), 1, cv2.LINE_AA,
-        )
+        cv2.putText(frame, f"SIM {W}x{H} {ts}",
+                    (4, 14), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.35, (80, 80, 80), 1, cv2.LINE_AA)
+ 
         return frame
-
+ 
     # ── Frame processing ─────────────────────────────────────────────────────
 
     def process_frame(self, frame: np.ndarray) -> np.ndarray:

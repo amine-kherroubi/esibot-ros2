@@ -15,6 +15,11 @@ def generate_launch_description():
             default_value='80',
             description='Port HTTP ESP32-CAM',
         ),
+        DeclareLaunchArgument(
+            'sim_mode',
+            default_value='false',
+            description='Enable simulation mode',
+        ),
 
         # ── Nœud caméra ────────────────────────────────────────────────
         Node(
@@ -31,7 +36,7 @@ def generate_launch_description():
                 'show_fps':        True,
                 'camera_frame':    'camera_link',  
                 'reconnect_delay': 3.0,
-                'sim_mode':        false,  
+                'sim_mode': LaunchConfiguration('sim_mode'), 
             }],
             output='screen',
             emulate_tty=True,
