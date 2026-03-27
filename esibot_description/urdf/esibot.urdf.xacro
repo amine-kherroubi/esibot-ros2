@@ -2,24 +2,22 @@
 <!--
   EsiBot URDF/Xacro
   ==================
-  Architecture : 2-wheel differential drive + 1 caster + SG90 servo turret + HC-SR04 + ESP32-CAM
-  Matches spec : HC-SR04 on SG90 servo = pseudo-LiDAR  |  ESP32-CAM OV2640 camera
-
-  TF tree:
-    base_footprint  (Nav2/SLAM root, ground level)
-    └── base_link   (lower chassis centre)
-        ├── left_wheel   (continuous)
-        ├── right_wheel  (continuous)
-        ├── caster_wheel (fixed)
-        ├── upper_plate  (fixed, 80 mm above)
-        │   ├── servo_base  (fixed, SG90 body)
-        │   │   └── servo_link  (REVOLUTE ±90°, drives HC-SR04 sweep)
-        │   │       └── ultrasound_sensor (fixed, HC-SR04 board)
-        │   └── camera_link (fixed, ESP32-CAM)
-        │       └── camera_optical_frame (fixed, Z-forward optical frame)
-        └── imu_link (fixed, placeholder)
-
-  Materials / Gazebo surface props → materials.xacro  (do NOT redeclare here)
+  ── TF tree ────────────────────────────────────────────────────────────────
+  map (provided at runtime by SLAM / AMCL — NOT in URDF)
+  └── odom (provided at runtime by diff-drive odometry node — NOT in URDF)
+      └── base_footprint  (Nav2/SLAM root, ground level)
+          └── base_link   (lower chassis centre)
+              ├── left_wheel   (continuous)
+              ├── right_wheel  (continuous)
+              ├── caster_wheel (fixed)
+              ├── imu_link     (fixed, placeholder)
+              └── upper_plate  (fixed, 80 mm above base_link)
+                  ├── servo_base  (fixed — SG90 body)
+                  │   └── servo_link  (REVOLUTE ±90°, sweeps HC-SR04)
+                  │       └── laser_link  (fixed — HC-SR04 board, published as LaserScan frame)
+                  └── camera_link (fixed — ESP32-CAM board)
+                      └── camera_optical_frame (fixed — Z-forward ROS optical convention)
+  ───────────────────────────────────────────────────────────────────────────
 -->
 <robot name="esibot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -35,7 +33,7 @@
   <xacro:property name="wheel_separation" value="0.138"/>
   <xacro:property name="caster_radius"    value="0.010"/>
   <xacro:property name="spacer_height"    value="0.080"/>
-  <xacro:property name="sensor_arm_x"     value="0.020"/>
+  <xacro:property name="sensor_arm_x"    value="0.020"/>
 
   <!-- ── BASE FOOTPRINT ───────────────────────────────────────────────────── -->
   <link name="base_footprint"/>
@@ -159,13 +157,6 @@
   </joint>
 
   <!-- ── SERVO LINK (SG90 horn — REVOLUTE) ────────────────────────────────── -->
-  <!--
-    angle =   0   → sensor faces forward (+X)
-    angle = +π/2  → sensor faces left    (+Y)
-    angle = -π/2  → sensor faces right   (-Y)
-    The Gazebo joint_state_publisher plugin publishes this angle to /joint_states.
-    NEVER run joint_state_publisher_gui alongside Gazebo — they conflict.
-  -->
   <link name="servo_link">
     <visual>
       <geometry><cylinder radius="0.010" length="0.004"/></geometry>
@@ -186,12 +177,12 @@
     <child  link="servo_link"/>
     <origin xyz="0 0 0.016" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="${-pi/2}" upper="${pi/2}" effort="0.34" velocity="5.24"/>
+    <limit lower="0.0" upper="${pi}" effort="0.34" velocity="5.24"/>
     <dynamics damping="0.001" friction="0.001"/>
   </joint>
 
-  <!-- ── HC-SR04 SENSOR LINK ──────────────────────────────────────────────── -->
-  <link name="ultrasound_sensor">
+  <!-- ── LASER LINK (HC-SR04 ultrasonic sensor board) ─────────────────────── -->
+  <link name="laser_link">
     <visual>
       <geometry><box size="0.045 0.020 0.015"/></geometry>
       <material name="hcsr04_blue"/>
@@ -206,9 +197,9 @@
     </inertial>
   </link>
 
-  <joint name="ultrasound_joint" type="fixed">
+  <joint name="laser_joint" type="fixed">
     <parent link="servo_link"/>
-    <child  link="ultrasound_sensor"/>
+    <child  link="laser_link"/>
     <origin xyz="${sensor_arm_x} 0 0.010" rpy="0 0 0"/>
   </joint>
 
@@ -284,7 +275,7 @@
 </gazebo>
 
 <!-- 3. HC-SR04 Ray Sensor -->
-<gazebo reference="ultrasound_sensor">
+<gazebo reference="laser_link">
   <sensor name="ultrasound" type="gpu_lidar">
     <always_on>true</always_on>
     <update_rate>20</update_rate>
