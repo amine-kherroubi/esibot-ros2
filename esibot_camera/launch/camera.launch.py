@@ -31,7 +31,7 @@ def generate_launch_description():
                 'show_fps':        True,
                 'camera_frame':    'camera_link',  
                 'reconnect_delay': 3.0,
-                'sim_mode':        True,  
+                'sim_mode':        false,  
             }],
             output='screen',
             emulate_tty=True,

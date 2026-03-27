@@ -9,3 +9,4 @@ esibot_camera_node:
     show_fps: true
     reconnect_delay: 3.0
     camera_frame: "camera_link"
+    sim_mode:        false
