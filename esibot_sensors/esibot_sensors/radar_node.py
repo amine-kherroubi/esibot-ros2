@@ -20,6 +20,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import JointState
 
 # Try to import GPIO. If unavailable, fall back to simulation mode.
 try:
@@ -34,6 +35,7 @@ class EsibotSensors(Node):
     def __init__(self):
         super().__init__('radar_node')
         self.publisher_ = self.create_publisher(LaserScan, '/scan', 10)
+        self.joint_state_pub = self.create_publisher(JointState, '/joint_states', 10)
 
         # ── Scan geometry — matches URDF servo_joint limits (±π/2) ──────────
         #   angle_min = −π/2 → right
@@ -47,10 +49,17 @@ class EsibotSensors(Node):
         self.range_min = 0.02   # 2 cm
         self.range_max = 4.00   # 400 cm
 
-        # ── GPIO pin assignments ─────────────────────────────────────────────
-        self.servo_pin = 17   # SG90 signal → GPIO 17
-        self.trig_pin  = 27   # HC-SR04 TRIG → GPIO 27
-        self.echo_pin  = 22   # HC-SR04 ECHO → GPIO 22
+      # ── GPIO pin assignments (overridable from launch file / params) ─────
+        self.declare_parameter('servo_pin',    17)
+        self.declare_parameter('trig_pin',     27)
+        self.declare_parameter('echo_pin',     22)
+        self.declare_parameter('sweep_period', 3.0)
+        self.declare_parameter('sim_mode',     False)
+
+        self.servo_pin = self.get_parameter('servo_pin').value
+        self.trig_pin  = self.get_parameter('trig_pin').value
+        self.echo_pin  = self.get_parameter('echo_pin').value
+        sweep_period   = self.get_parameter('sweep_period').value
 
         if HARDWARE_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
@@ -71,12 +80,14 @@ class EsibotSensors(Node):
 
         # ── Timer ────────────────────────────────────────────────────────────
         # Worst-case sweep: 19 steps × (0.10 s settle + 0.01 s measure)
+        # self.timer = self.create_timer(sweep_period, self.timer_callback) for real hardware
         self.timer = self.create_timer(3.0, self.timer_callback)
+
 
     # ── Timer callback ───────────────────────────────────────────────────────
 
     def timer_callback(self):
-        # Fix #9: skip this tick if the previous sweep hasn't finished.
+        # skip this tick if the previous sweep hasn't finished.
         if self._scanning:
             self.get_logger().warn(
                 "Previous sweep still running — skipping this tick. "
@@ -93,7 +104,7 @@ class EsibotSensors(Node):
 
         msg = LaserScan()
         msg.header.stamp    = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'laser_link'   # Fix #1: was 'ultrasound_sensor'
+        msg.header.frame_id = 'laser_link'  
         msg.angle_min       = self.angle_min
         msg.angle_max       = self.angle_max
         msg.angle_increment = self.angle_increment
@@ -106,9 +117,16 @@ class EsibotSensors(Node):
         angle  = self.angle_min
 
         while angle <= self.angle_max + 1e-9:   # +epsilon avoids float drift
+                        
+            js = JointState()
+            js.header.stamp = self.get_clock().now().to_msg()
+            js.name     = ['servo_joint']
+            js.position = [angle]
+            self.joint_state_pub.publish(js)
+
             raw = self.read_distance(angle)
 
-            # Fix #2: clamp invalid readings to range_max + 1.0 per REP-117
+            # clamp invalid readings to range_max + 1.0 per REP-117
             if raw < self.range_min or raw > self.range_max:
                 dist = self.range_max + 1.0
             else:
@@ -117,10 +135,12 @@ class EsibotSensors(Node):
             ranges.append(dist)
             angle += self.angle_increment
 
-        # Fix #7: compute actual sweep duration and set scan_time
+        # compute actual sweep duration and set scan_time
         sweep_duration  = time.time() - sweep_start
         msg.scan_time   = float(sweep_duration)
         msg.ranges      = ranges
+
+        msg.time_increment = float(sweep_duration) / (len(ranges) - 1)
 
         self.publisher_.publish(msg)
         self.get_logger().info(
