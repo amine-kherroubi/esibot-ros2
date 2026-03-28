@@ -56,7 +56,7 @@
 
   <!--
     esibot_description: provides the robot URDF and robot_state_publisher.
-    Required so the TF tree exists: base_footprint → base_link → ultrasound_sensor
+    Required so the TF tree exists: base_footprint → base_link → laser_link
   -->
   <exec_depend>esibot_description</exec_depend>
 
