@@ -99,7 +99,7 @@ ros2 launch esibot_camera esibot_camera.launch.py esp32_ip:=192.168.1.80
 ### Mode simulation — sans matériel
 
 ```bash
-ros2 launch esibot_camera esibot_camera.launch.py sim_mode:=true
+ros2 launch esibot_camera camera.launch.py sim_mode:=true
 ```
 
 ---
