@@ -1,0 +1,135 @@
+# =============================================================================
+# esibot_slam — config/slam_params_sim.yaml
+# =============================================================================
+# slam_toolbox parameters tuned for GAZEBO HARMONIC simulation.
+#
+# Key differences compared to hardware (slam_params_hw.yaml):
+#   • use_sim_time: true        → use Gazebo /clock instead of system clock
+#   • scan_topic: /scan         → /ultrasound_raw is relayed here by relay_node
+#   • minimum_time_interval: 0.3s → Gazebo sensor is faster than real hardware
+#   • map_update_interval: 2.0s → shorter update cycle, Gazebo has no CPU limits
+#
+# Algorithm: online_async — processes each LaserScan as it arrives (no batching).
+# This is the recommended mode for a slow, irregular sensor like the HC-SR04 radar.
+#
+# Reference: https://github.com/SteveMacenski/slam_toolbox
+# =============================================================================
+
+slam_toolbox:
+  ros__parameters:
+
+    # ── Solver plugin (pose-graph constraint solver) ───────────────────────
+    # CeresSolver is recommended over G2O for small indoor robots:
+    # more accurate and stable on sparse scan data like ours.
+    solver_plugin: solver_plugins::CeresSolver
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
+    ceres_preconditioner: SCHUR_JACOBI
+    ceres_trust_strategy: LEVENBERG_MARQUARDT
+    ceres_dogleg_type: TRADITIONAL_DOGLEG
+    ceres_loss_function: None
+
+    # ── TF frame names ─────────────────────────────────────────────────────
+    # These must exactly match the EsiBot URDF frame names.
+    #   odom_frame  : odometry frame (published by esibot_driver via /odom)
+    #   map_frame   : SLAM map frame (created by slam_toolbox)
+    #   base_frame  : robot root frame (base_footprint in the EsiBot URDF)
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+
+    # ── Scanner topic ───────────────────────────────────────────────────────
+    # In simulation : /ultrasound_raw (from gz_bridge) is relayed to /scan
+    # On hardware   : radar_node publishes directly on /scan
+    # Always /scan here — the relay_node handles the conversion in simulation.
+    scan_topic: /scan
+
+    # ── Operating mode ──────────────────────────────────────────────────────
+    # mapping      : build map + localize simultaneously (SLAM)
+    # localization : use an existing map, do not modify it (for Nav2, Task 3.6)
+    mode: mapping
+
+    # ── Simulation clock ────────────────────────────────────────────────────
+    # REQUIRED for Gazebo simulation — uses /clock topic instead of wall clock.
+    use_sim_time: true
+
+    # ── TF publish rate (map → odom transform) ──────────────────────────────
+    # 0.02 s = 50 Hz — fast enough for smooth Nav2 and RViz2 updates
+    transform_publish_period: 0.02
+
+    # ── Map update interval ─────────────────────────────────────────────────
+    # 2.0 s between map reconstructions in simulation.
+    # The Gazebo sensor is fast; increase this if CPU load is too high.
+    map_update_interval: 2.0
+
+    # ── Map resolution (meters per pixel) ──────────────────────────────────
+    # 0.05 m = 5 cm per cell — standard for indoor SLAM.
+    # Decrease for more detail, increase to save RAM on constrained hardware.
+    resolution: 0.05
+
+    # ── Maximum sensor range ────────────────────────────────────────────────
+    # HC-SR04 physical range: 2 cm – 4 m (precision ±3 mm).
+    # Readings beyond max_laser_range are discarded by slam_toolbox.
+    max_laser_range: 4.0
+
+    # ── Scan throttling ─────────────────────────────────────────────────────
+    # throttle_scans: 1 = process every incoming scan.
+    # Increase to 2 or 3 to reduce CPU load if scan frequency is high.
+    throttle_scans: 1
+
+    # ── Minimum time between processed scans ────────────────────────────────
+    # Real HC-SR04 radar: 1 full sweep every 0.5–1 s → hardware needs 0.5 s.
+    # In Gazebo, the gpu_lidar is faster, so 0.3 s is sufficient.
+    minimum_time_interval: 0.3
+
+    # ── Minimum robot displacement to trigger a SLAM update ─────────────────
+    # The robot must have moved at least X meters OR turned at least Y radians
+    # before a new scan is integrated into the map.
+    # Low values = denser map but higher CPU usage.
+    minimum_travel_distance: 0.15
+    minimum_travel_heading: 0.25
+
+    # ── Scan matching ───────────────────────────────────────────────────────
+    use_scan_matching: true
+    use_scan_barycenter: true
+
+    # ── Scan buffer ─────────────────────────────────────────────────────────
+    # Number of scans kept in memory for scan-to-map matching.
+    scan_buffer_size: 10
+    scan_buffer_maximum_scan_distance: 10.0
+
+    # ── Fine matching parameters ────────────────────────────────────────────
+    # Derived from TurtleBot3 defaults, adapted for the ultrasound sensor.
+    link_match_minimum_response_fine: 0.1
+    distance_variance_penalty: 0.5
+    angle_variance_penalty: 1.0
+
+    fine_search_angle_offset: 0.00349    # ~0.2 degrees
+    coarse_search_angle_offset: 0.349    # ~20 degrees
+    coarse_angle_resolution: 0.0349      # ~2 degrees
+    minimum_angle_penalty: 0.9
+    minimum_distance_penalty: 0.5
+    use_response_expansion: true
+
+    # ── TF lookup timeout ───────────────────────────────────────────────────
+    # Maximum time to wait for a TF transform before giving up.
+    transform_timeout: 0.5
+
+    # ── TF buffer duration ──────────────────────────────────────────────────
+    # Keep 30 seconds of TF history in memory for late-arriving transforms.
+    tf_buffer_duration: 30.0
+
+    # ── Ceres solver memory allocation ─────────────────────────────────────
+    # 40 MB — sufficient for a typical indoor map (room or corridor).
+    stack_size_to_use: 40000000
+
+    # ── Interactive mode ────────────────────────────────────────────────────
+    # Allows manual pose correction via the slam_toolbox RViz2 panel.
+    enable_interactive_mode: true
+
+    # ── Map saver ───────────────────────────────────────────────────────────
+    # Enable map saving via save_map.launch.py
+    use_map_saver: true
+
+    # ── Debug logging ───────────────────────────────────────────────────────
+    # Set to true to see detailed scan matching logs in the terminal.
+    debug_logging: false
