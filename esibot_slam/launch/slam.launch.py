@@ -138,7 +138,7 @@ def generate_launch_description():
         output="screen",
         # Zero transform: laser_link has the same pose as itself.
         # args: x y z yaw pitch roll parent_frame child_frame
-        arguments=["0", "0", "0", "0", "0", "0", "laser_link", "laser_link"],
+        arguments=["0", "0", "0", "0", "0", "0", "base_footprint", "laser_link"],
         condition=is_hw,
     )
 
