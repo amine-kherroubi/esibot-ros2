@@ -48,7 +48,7 @@ def generate_launch_description():
     )
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
-        default_value="true",
+        default_value="false",
         description="Use simulation (Gazebo) clock if true",
     )
     autostart_arg = DeclareLaunchArgument(
@@ -101,14 +101,15 @@ def generate_launch_description():
             os.path.join(nav2_bringup_dir, "launch", "bringup_launch.py")
         ),
         launch_arguments={
-            "slam": "False",
-            "use_localization": "True",
-            "map": LaunchConfiguration("map"),
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "params_file": configured_params,
-            "autostart": LaunchConfiguration("autostart"),
-            "use_composition": LaunchConfiguration("use_composition"),
-            "use_respawn": LaunchConfiguration("use_respawn"),
+            "slam":              "False",
+            "use_localization":  "True",
+            "map":               LaunchConfiguration("map"),
+            "use_sim_time":      LaunchConfiguration("use_sim_time"),
+            "params_file":       configured_params,
+            "autostart":         LaunchConfiguration("autostart"),
+            "use_composition":   "False",
+            "use_respawn":       "False",
+            "log_level":         "info",
         }.items(),
     )
 
