@@ -6,10 +6,10 @@ esibot_driver:
     # Serial connection to ESP32
     serial_port: "/dev/ttyUSB0"
     baud_rate: 115200
-    serial_timeout: 0.1
+    serial_timeout: 0.03
 
     # Robot geometry (meters)
-    wheel_base: 0.16
+    wheel_base: 0.138
     wheel_radius: 0.033
     encoder_ticks_per_rev: 330
 
