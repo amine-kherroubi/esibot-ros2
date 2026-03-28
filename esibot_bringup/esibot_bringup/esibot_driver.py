@@ -49,7 +49,7 @@ class EsibotDriver(Node):
         self.declare_parameter("wheel_radius",          DEFAULT_WHEEL_RADIUS)
         self.declare_parameter("encoder_ticks_per_rev", DEFAULT_TICKS_PER_REV)
         self.declare_parameter("odom_frame",            "odom")
-        self.declare_parameter("base_frame",            "base_link")
+        self.declare_parameter("base_frame", "base_footprint")
         self.declare_parameter("odom_topic",            "odom")
         self.declare_parameter("cmd_vel_topic",         "cmd_vel")
         self.declare_parameter("battery_topic",         "battery_state")
