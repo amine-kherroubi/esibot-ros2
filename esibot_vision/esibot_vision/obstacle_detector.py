@@ -12,7 +12,14 @@ import cv2
 import numpy as np
 
 from esibot_logging import get_logger
-from esibot_vision.config import COLOR_RED, COLOR_ORANGE, COLOR_WHITE
+from esibot_vision.config import (
+    COLOR_RED,
+    COLOR_ORANGE,
+    COLOR_WHITE,
+    PROXIMITY_VERY_CLOSE,
+    PROXIMITY_CLOSE,
+    PROXIMITY_DETECTED,
+)
 
 log = get_logger(__name__)
 
@@ -122,11 +129,11 @@ class ObstacleDetector:
                 area = (x2 - x1) * (y2 - y1)
                 ratio = area / total_area
                 if ratio > 0.25:
-                    proximity, color = "TRES_PROCHE", COLOR_RED
+                    proximity, color = PROXIMITY_VERY_CLOSE, COLOR_RED
                 elif ratio > 0.08:
-                    proximity, color = "PROCHE", COLOR_ORANGE
+                    proximity, color = PROXIMITY_CLOSE, COLOR_ORANGE
                 else:
-                    proximity, color = "DETECTE", COLOR_WHITE
+                    proximity, color = PROXIMITY_DETECTED, COLOR_WHITE
 
                 label = (
                     self._model.names.get(cls_id, f"cls{cls_id}")

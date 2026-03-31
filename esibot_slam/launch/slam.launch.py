@@ -1,8 +1,20 @@
+# Copyright 2026 EsiBot Project
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
-esibot_slam - launch/slam.launch.py
-===================================
-=== USAGE ===
+Launch SLAM for EsiBot (simulation or hardware).
 
+Usage:
   # Simulation (Gazebo must already be running):
   ros2 launch esibot_slam slam.launch.py
 
@@ -31,77 +43,76 @@ from launch.substitutions import (
     NotSubstitution,
     PythonExpression,
 )
-from launch_ros.actions import LifecycleNode
+from launch_ros.actions import LifecycleNode, Node
 from launch_ros.descriptions import ParameterFile
 from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
-from launch_ros.actions import Node
 from lifecycle_msgs.msg import Transition
 
 
 def generate_launch_description():
 
     # ── Package directories ───────────────────────────────────────────────────
-    slam_pkg = get_package_share_directory("esibot_slam")
+    slam_pkg = get_package_share_directory('esibot_slam')
 
-    slam_params_sim = os.path.join(slam_pkg, "config", "slam_params_sim.yaml")
-    slam_params_hw = os.path.join(slam_pkg, "config", "slam_params_hw.yaml")
-    rviz_config = os.path.join(slam_pkg, "config", "esibot_slam.rviz")
+    slam_params_sim = os.path.join(slam_pkg, 'config', 'slam_params_sim.yaml')
+    slam_params_hw = os.path.join(slam_pkg, 'config', 'slam_params_hw.yaml')
+    rviz_config = os.path.join(slam_pkg, 'config', 'esibot_slam.rviz')
 
     # ── Launch arguments ──────────────────────────────────────────────────────
     mode_arg = DeclareLaunchArgument(
-        "mode",
-        default_value="sim",
-        choices=["sim", "hw"],
+        'mode',
+        default_value='sim',
+        choices=['sim', 'hw'],
         description=(
-            "'sim' = Gazebo Harmonic simulation (use_sim_time=true, "
-            "loads slam_params_sim.yaml). "
-            "'hw'  = Real Raspberry Pi 4 hardware (use_sim_time=false, "
-            "loads slam_params_hw.yaml). "
-            "IMPORTANT: passing the wrong mode on real hardware will cause "
-            "slam_toolbox to stall waiting for a /clock topic."
+            '"sim" = Gazebo Harmonic simulation (use_sim_time=true, '
+            'loads slam_params_sim.yaml). '
+            '"hw"  = Real Raspberry Pi 4 hardware (use_sim_time=false, '
+            'loads slam_params_hw.yaml). '
+            'IMPORTANT: passing the wrong mode on real hardware will cause '
+            'slam_toolbox to stall waiting for a /clock topic.'
         ),
     )
 
     autostart_arg = DeclareLaunchArgument(
-        "autostart",
-        default_value="true",
+        'autostart',
+        default_value='true',
         description=(
-            "Automatically configure and activate slam_toolbox at launch. "
-            "Set to false if you want to transition the node manually."
+            'Automatically configure and activate slam_toolbox at launch. '
+            'Set to false if you want to transition the node manually.'
         ),
     )
 
     use_lifecycle_manager_arg = DeclareLaunchArgument(
-        "use_lifecycle_manager",
-        default_value="false",
+        'use_lifecycle_manager',
+        default_value='false',
         description=(
-            "Set to true only when an external lifecycle manager (e.g. Nav2) "
-            "will manage slam_toolbox transitions and hold the bond connection. "
-            "Leave false for standalone SLAM use."
+            'Set to true only when an external lifecycle manager (e.g. Nav2) '
+            'will manage slam_toolbox transitions and hold the bond connection. '
+            'Leave false for standalone SLAM use.'
         ),
     )
 
     use_rviz_arg = DeclareLaunchArgument(
-        "use_rviz",
-        default_value="false",
-        description="Launch RViz2 with the EsiBot SLAM visualization config.",
+        'use_rviz',
+        default_value='false',
+        description='Launch RViz2 with the EsiBot SLAM visualization config.',
     )
 
     teleop_arg = DeclareLaunchArgument(
-        "teleop",
-        default_value="false",
+        'teleop',
+        default_value='false',
         description=(
-            "Launch teleop_twist_keyboard in a separate xterm window. "
-            "Requires: sudo apt install xterm"
+            'Launch teleop_twist_keyboard in a separate xterm window. '
+            'Requires: sudo apt install xterm'
         ),
     )
 
-    mode = LaunchConfiguration("mode")
-    autostart = LaunchConfiguration("autostart")
-    use_lifecycle_manager = LaunchConfiguration("use_lifecycle_manager")
-    use_rviz = LaunchConfiguration("use_rviz")
-    teleop = LaunchConfiguration("teleop")
+    mode = LaunchConfiguration('mode')
+    autostart = LaunchConfiguration('autostart')
+    use_lifecycle_manager = LaunchConfiguration('use_lifecycle_manager')
+    use_rviz = LaunchConfiguration('use_rviz')
+    teleop = LaunchConfiguration('teleop')
 
     # PythonExpression conditions — compatible with all ROS 2 Galactic+
     is_sim = IfCondition(PythonExpression(["'", mode, "' == 'sim'"]))
@@ -112,24 +123,24 @@ def generate_launch_description():
     # gz_bridge maps the Gazebo gpu_lidar to /ultrasound_raw (LaserScan).
     # slam_toolbox expects /scan. This relay bridges the gap.
     relay_node = Node(
-        package="topic_tools",
-        executable="relay",
-        name="ultrasound_to_scan_relay",
-        output="screen",
-        arguments=["/ultrasound_raw", "/scan"],
+        package='topic_tools',
+        executable='relay',
+        name='ultrasound_to_scan_relay',
+        output='screen',
+        arguments=['/ultrasound_raw', '/scan'],
         condition=is_sim,
     )
 
     # ── [2] static_tf_laser_link — HARDWARE ONLY ────────────────────────────
 
     static_tf_laser_link = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name="static_tf_laser_link",
-        output="screen",
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_laser_link',
+        output='screen',
         # Zero transform: laser_link has the same pose as itself.
         # args: x y z yaw pitch roll parent_frame child_frame
-        arguments=["0", "0", "0", "0", "0", "0", "base_footprint", "laser_link"],
+        arguments=['0', '0', '0', '0', '0', '0', 'base_footprint', 'laser_link'],
         condition=is_hw,
     )
 
@@ -139,42 +150,42 @@ def generate_launch_description():
     # Do NOT use slam_toolbox_node (synchronous) — it blocks the executor.
     # The YAML mode: mapping parameter is consistent with async operation.
     slam_toolbox_sim = LifecycleNode(
-        package="slam_toolbox",
-        executable="async_slam_toolbox_node",
-        name="slam_toolbox",
-        output="screen",
-        namespace="",
+        package='slam_toolbox',
+        executable='async_slam_toolbox_node',
+        name='slam_toolbox',
+        output='screen',
+        namespace='',
         parameters=[
             ParameterFile(slam_params_sim, allow_substs=True),
             {
-                "use_lifecycle_manager": use_lifecycle_manager,
-                "use_sim_time": True,
+                'use_lifecycle_manager': use_lifecycle_manager,
+                'use_sim_time': True,
             },
         ],
         remappings=[
-            ("/scan", "/scan"),
-            ("/odom", "/odom"),
+            ('/scan', '/scan'),
+            ('/odom', '/odom'),
         ],
         condition=is_sim,
     )
 
     # ── [3b] async_slam_toolbox_node — HARDWARE MODE ─────────────────────────
     slam_toolbox_hw = LifecycleNode(
-        package="slam_toolbox",
-        executable="async_slam_toolbox_node",
-        name="slam_toolbox",
-        output="screen",
-        namespace="",
+        package='slam_toolbox',
+        executable='async_slam_toolbox_node',
+        name='slam_toolbox',
+        output='screen',
+        namespace='',
         parameters=[
             ParameterFile(slam_params_hw, allow_substs=True),
             {
-                "use_lifecycle_manager": use_lifecycle_manager,
-                "use_sim_time": False,
+                'use_lifecycle_manager': use_lifecycle_manager,
+                'use_sim_time': False,
             },
         ],
         remappings=[
-            ("/scan", "/scan"),
-            ("/odom", "/odom"),
+            ('/scan', '/scan'),
+            ('/odom', '/odom'),
         ],
         condition=is_hw,
     )
@@ -210,11 +221,11 @@ def generate_launch_description():
     activate_event_sim = RegisterEventHandler(
         OnStateTransition(
             target_lifecycle_node=slam_toolbox_sim,
-            start_state="configuring",
-            goal_state="inactive",
+            start_state='configuring',
+            goal_state='inactive',
             entities=[
                 LogInfo(
-                    msg="[EsiBot SLAM] slam_toolbox configured — activating now..."
+                    msg='[EsiBot SLAM] slam_toolbox configured — activating now...'
                 ),
                 EmitEvent(
                     event=ChangeState(
@@ -235,11 +246,11 @@ def generate_launch_description():
     activate_event_hw = RegisterEventHandler(
         OnStateTransition(
             target_lifecycle_node=slam_toolbox_hw,
-            start_state="configuring",
-            goal_state="inactive",
+            start_state='configuring',
+            goal_state='inactive',
             entities=[
                 LogInfo(
-                    msg="[EsiBot SLAM] slam_toolbox configured — activating now..."
+                    msg='[EsiBot SLAM] slam_toolbox configured — activating now...'
                 ),
                 EmitEvent(
                     event=ChangeState(
@@ -259,64 +270,64 @@ def generate_launch_description():
 
     # ── [6] RViz2 — OPTIONAL ─────────────────────────────────────────────────
     rviz2 = Node(
-        package="rviz2",
-        executable="rviz2",
-        name="rviz2",
-        output="screen",
-        arguments=["-d", rviz_config],
-        parameters=[{"use_sim_time": PythonExpression(["'", mode, "' == 'sim'"])}],
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        output='screen',
+        arguments=['-d', rviz_config],
+        parameters=[{'use_sim_time': PythonExpression(["'", mode, "' == 'sim'"])}],
         condition=IfCondition(use_rviz),
     )
 
     # ── [7] Keyboard Teleoperation — OPTIONAL ─────────────────────────────────
     teleop_node = Node(
-        package="teleop_twist_keyboard",
-        executable="teleop_twist_keyboard",
-        name="teleop_twist_keyboard",
-        output="screen",
-        remappings=[("/cmd_vel", "/cmd_vel")],
-        prefix="xterm -e",
+        package='teleop_twist_keyboard',
+        executable='teleop_twist_keyboard',
+        name='teleop_twist_keyboard',
+        output='screen',
+        remappings=[('/cmd_vel', '/cmd_vel')],
+        prefix='xterm -e',
         condition=IfCondition(teleop),
     )
 
     # ── Startup logs ──────────────────────────────────────────────────────────
     log_sim = LogInfo(
         msg=[
-            "\n",
-            "=======================================================\n",
-            "  EsiBot SLAM - SIMULATION MODE (Gazebo Harmonic)\n",
-            "=======================================================\n",
-            "  Nodes:\n",
-            "    • relay_node               : /ultrasound_raw -> /scan\n",
-            "    • async_slam_toolbox_node  (LifecycleNode, online_async)\n",
-            "      lifecycle: CONFIGURE -> ACTIVATE  (event-driven)\n",
-            "  Config : slam_params_sim.yaml  |  use_sim_time: true\n",
-            "\n",
-            "  Prerequisite: ros2 launch esibot_gazebo sim.launch.py\n",
-            "  Launch SLAM : ros2 launch esibot_slam slam.launch.py\n",
-            "=======================================================\n",
+            '\n',
+            '=======================================================\n',
+            '  EsiBot SLAM - SIMULATION MODE (Gazebo Harmonic)\n',
+            '=======================================================\n',
+            '  Nodes:\n',
+            '    • relay_node               : /ultrasound_raw -> /scan\n',
+            '    • async_slam_toolbox_node  (LifecycleNode, online_async)\n',
+            '      lifecycle: CONFIGURE -> ACTIVATE  (event-driven)\n',
+            '  Config : slam_params_sim.yaml  |  use_sim_time: true\n',
+            '\n',
+            '  Prerequisite: ros2 launch esibot_gazebo sim.launch.py\n',
+            '  Launch SLAM : ros2 launch esibot_slam slam.launch.py\n',
+            '=======================================================\n',
         ],
         condition=is_sim,
     )
 
     log_hw = LogInfo(
         msg=[
-            "\n",
-            "=======================================================\n",
-            "  EsiBot SLAM - HARDWARE MODE (Raspberry Pi 4)\n",
-            "=======================================================\n",
-            "  Nodes:\n",
-            "    • static_tf_laser_link     : laser_link TF fallback\n",
-            "    • async_slam_toolbox_node  (LifecycleNode, online_async)\n",
-            "      lifecycle: CONFIGURE -> ACTIVATE  (event-driven)\n",
-            "  Config : slam_params_hw.yaml  |  use_sim_time: false\n",
-            "\n",
-            "  Prerequisites:\n",
-            "    ros2 launch esibot_bringup bringup.launch.py\n",
-            "  Verify:\n",
-            "    ros2 topic hz /scan   # ~0.5 Hz expected (HC-SR04 sweep)\n",
-            "    ros2 topic hz /odom   # ~10+ Hz expected\n",
-            "=======================================================\n",
+            '\n',
+            '=======================================================\n',
+            '  EsiBot SLAM - HARDWARE MODE (Raspberry Pi 4)\n',
+            '=======================================================\n',
+            '  Nodes:\n',
+            '    • static_tf_laser_link     : laser_link TF fallback\n',
+            '    • async_slam_toolbox_node  (LifecycleNode, online_async)\n',
+            '      lifecycle: CONFIGURE -> ACTIVATE  (event-driven)\n',
+            '  Config : slam_params_hw.yaml  |  use_sim_time: false\n',
+            '\n',
+            '  Prerequisites:\n',
+            '    ros2 launch esibot_bringup bringup.launch.py\n',
+            '  Verify:\n',
+            '    ros2 topic hz /scan   # ~0.5 Hz expected (HC-SR04 sweep)\n',
+            '    ros2 topic hz /odom   # ~10+ Hz expected\n',
+            '=======================================================\n',
         ],
         condition=is_hw,
     )

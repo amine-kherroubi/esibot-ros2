@@ -16,4 +16,7 @@ setup(
     maintainer_email="team@esibot.local",
     description="Shared logging utilities for EsiBot packages.",
     license="Apache-2.0",
+    extras_require={
+        "test": ["pytest"],
+    },
 )

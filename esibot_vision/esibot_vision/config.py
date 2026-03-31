@@ -39,6 +39,11 @@ COLOR_WHITE = (255, 255, 255)
 COLOR_BLUE = (255, 0, 0)
 COLOR_PURPLE = (255, 0, 255)
 
+# -- Obstacle proximity labels ----------------------------------------------
+PROXIMITY_VERY_CLOSE = "VERY_CLOSE"
+PROXIMITY_CLOSE = "CLOSE"
+PROXIMITY_DETECTED = "DETECTED"
+
 # -- Colors per sign class -------------------------------------------------
 SIGN_COLORS = {
     "speed_30": COLOR_ORANGE,

@@ -24,6 +24,9 @@ setup(
     maintainer_email="team@esibot.local",
     description="EsiBot bringup - driver node for ESP32 motor + odometry bridge",
     license="Apache-2.0",
+    extras_require={
+        "test": ["pytest"],
+    },
     entry_points={
         "console_scripts": [
             # This is what ros2 run uses:

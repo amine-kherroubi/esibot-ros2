@@ -92,14 +92,20 @@ class VisionNode(Node):
         self.create_subscription(Image, "/image_raw", self._cb_image, 10)
 
         # ── Publishers ───────────────────────────────────────────────────
-        self._pub_annotated = self.create_publisher(
+        self._annotated_pub = self.create_publisher(
             Image, "/camera/image_annotated", 10
         )
-        self._pub_lane_error = self.create_publisher(Float32, "/esibot/lane_error", 10)
-        self._pub_lane_status = self.create_publisher(String, "/esibot/lane_status", 10)
-        self._pub_signs = self.create_publisher(String, "/esibot/signs", 10)
-        self._pub_obstacles = self.create_publisher(String, "/esibot/obstacles", 10)
-        self._pub_obstacle_lane = self.create_publisher(
+        self._lane_error_pub = self.create_publisher(
+            Float32, "/esibot/lane_error", 10
+        )
+        self._lane_status_pub = self.create_publisher(
+            String, "/esibot/lane_status", 10
+        )
+        self._signs_pub = self.create_publisher(String, "/esibot/signs", 10)
+        self._obstacles_pub = self.create_publisher(
+            String, "/esibot/obstacles", 10
+        )
+        self._obstacle_in_lane_pub = self.create_publisher(
             Bool, "/esibot/obstacle_in_lane", 10
         )
 
@@ -175,17 +181,17 @@ class VisionNode(Node):
         # ── Publishing ───────────────────────────────────────────────────
         msg_err = Float32()
         msg_err.data = float(lane_error)
-        self._pub_lane_error.publish(msg_err)
+        self._lane_error_pub.publish(msg_err)
 
         msg_status = String()
         msg_status.data = lane_status
-        self._pub_lane_status.publish(msg_status)
+        self._lane_status_pub.publish(msg_status)
 
         msg_signs = String()
         msg_signs.data = json.dumps(
             [{"label": d["label"], "conf": d["conf"]} for d in sign_detections]
         )
-        self._pub_signs.publish(msg_signs)
+        self._signs_pub.publish(msg_signs)
 
         msg_obs = String()
         msg_obs.data = json.dumps(
@@ -199,11 +205,11 @@ class VisionNode(Node):
                 for o in obstacle_detections
             ]
         )
-        self._pub_obstacles.publish(msg_obs)
+        self._obstacles_pub.publish(msg_obs)
 
         msg_in_lane = Bool()
         msg_in_lane.data = obstacle_in_lane
-        self._pub_obstacle_lane.publish(msg_in_lane)
+        self._obstacle_in_lane_pub.publish(msg_in_lane)
 
         # ── HUD + annotated image ─────────────────────────────────────────
         if self.publish_annotated and annotated is not None:
@@ -245,7 +251,7 @@ class VisionNode(Node):
         msg.is_bigendian = False
         msg.step = w * 3
         msg.data = img.tobytes()
-        self._pub_annotated.publish(msg)
+        self._annotated_pub.publish(msg)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

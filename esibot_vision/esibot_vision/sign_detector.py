@@ -19,6 +19,7 @@ from esibot_vision.config import SIGN_CLASSES, SIGN_COLORS, COLOR_WHITE
 
 log = get_logger(__name__)
 
+_REMOVE_FRAMES = 8
 
 class SignDetector:
 
@@ -32,7 +33,7 @@ class SignDetector:
         conf_threshold : minimum confidence threshold (0-1)
                          0.70 recommended to reduce false positives
         confirm_frames : consecutive frames before confirming
-                         a detection (de-noising filter)
+                         a detection (denoising filter)
         """
         self.conf_threshold = conf_threshold
         self.confirm_frames = confirm_frames
@@ -66,7 +67,7 @@ class SignDetector:
     # ─────────────────────────────────────────────────────────────────────
     def detect(self, frame: np.ndarray, annotated: np.ndarray | None = None):
         """
-        Detect signs with a temporal de-noising filter.
+        Detect signs with a temporal denoising filter.
 
         Returns
         -------
@@ -127,12 +128,11 @@ class SignDetector:
                 self._counters[label] = (cnt, lost + 1)
 
         # Confirm after enough consecutive detections
-        # Remove if absent for remove_frames frames
-        remove_frames = 8
+        # Remove if absent for _REMOVE_FRAMES frames
         new_confirmed = set()
         for lbl, (cnt, lost) in self._counters.items():
             if cnt >= self.confirm_frames:
-                if lost < remove_frames:
+                if lost < _REMOVE_FRAMES:
                     new_confirmed.add(lbl)
         self._confirmed = new_confirmed
 

@@ -70,9 +70,9 @@ class CameraStreamNode(Node):
             )
 
         # ── Publishers ───────────────────────────────────────────────────────
-        self.image_pub = self.create_publisher(Image, "/camera/image_raw", 10)
-        self.info_pub = self.create_publisher(CameraInfo, "/camera/camera_info", 10)
-        self.status_pub = self.create_publisher(String, "/camera/status", 10)
+        self._image_pub = self.create_publisher(Image, "/camera/image_raw", 10)
+        self._info_pub = self.create_publisher(CameraInfo, "/camera/camera_info", 10)
+        self._status_pub = self.create_publisher(String, "/camera/status", 10)
 
         # ── Publish timer (ROS executor thread) ──────────────────────────────
         self.pub_timer = self.create_timer(1.0 / self.publish_rate, self.publish_frame)
@@ -141,8 +141,16 @@ class CameraStreamNode(Node):
             except urllib.error.URLError as e:
                 self.log.warning(f"ESP32 unreachable: {e.reason}")
                 self._publish_status(f"DISCONNECTED: {e.reason}")
-                self.log.info(f"Reconnecting in {self.reconnect_delay}s...")
                 self._stream = None
+                if not self.sim_mode:
+                    self.sim_mode = True
+                    self.log.warning(
+                        "ESP32 unreachable — switching to SIM mode."
+                    )
+                    self._publish_status("SIM_MODE")
+                    return self._make_sim_frame()
+
+                self.log.info(f"Reconnecting in {self.reconnect_delay}s...")
                 time.sleep(self.reconnect_delay)
                 return None
 
@@ -358,7 +366,7 @@ class CameraStreamNode(Node):
         msg.is_bigendian = False
         msg.step = frame.shape[1] * 3
         msg.data = frame.tobytes()
-        self.image_pub.publish(msg)
+        self._image_pub.publish(msg)
 
         self._publish_camera_info(stamp)
 
@@ -379,14 +387,14 @@ class CameraStreamNode(Node):
         info.k = [fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0]
         info.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
         info.p = [fx, 0.0, cx, 0.0, 0.0, fy, cy, 0.0, 0.0, 0.0, 1.0, 0.0]
-        self.info_pub.publish(info)
+        self._info_pub.publish(info)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _publish_status(self, status: str):
         msg = String()
         msg.data = status
-        self.status_pub.publish(msg)
+        self._status_pub.publish(msg)
 
     def destroy_node(self):
         self.running = False  # signals capture_loop to exit

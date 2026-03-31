@@ -40,8 +40,8 @@ class EsibotSensors(Node):
     def __init__(self):
         super().__init__("radar_node")
         self.log = get_logger(node=self)
-        self.publisher_ = self.create_publisher(LaserScan, "/scan", 10)
-        self.joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
+        self._scan_pub = self.create_publisher(LaserScan, "/scan", 10)
+        self._joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
 
         # ── Scan geometry — matches URDF servo_joint limits (+/- pi/2) ─────
         #   angle_min = -pi/2 -> right
@@ -132,7 +132,7 @@ class EsibotSensors(Node):
             js.header.stamp = self.get_clock().now().to_msg()
             js.name = ["servo_joint"]
             js.position = [angle]
-            self.joint_state_pub.publish(js)
+            self._joint_state_pub.publish(js)
 
             raw = self.read_distance(angle)
 
@@ -152,7 +152,7 @@ class EsibotSensors(Node):
 
         msg.time_increment = float(sweep_duration) / (len(ranges) - 1)
 
-        self.publisher_.publish(msg)
+        self._scan_pub.publish(msg)
         self.log.info(
             f"Published LaserScan: {len(ranges)} ranges, "
             f"sweep_time={sweep_duration:.3f}s, "
