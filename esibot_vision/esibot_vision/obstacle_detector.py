@@ -11,7 +11,7 @@ import os
 import cv2
 import numpy as np
 
-from esibot_vision.config import COLOR_RED, COLOR_ORANGE, COLOR_GREEN, COLOR_WHITE
+from esibot_vision.config import COLOR_RED, COLOR_ORANGE, COLOR_WHITE
 
 
 _IGNORE_CLASSES = {

@@ -12,7 +12,7 @@ Filters:
 
 import cv2
 import numpy as np
-from esibot_vision.config import COLOR_CYAN, COLOR_YELLOW, COLOR_GREEN, COLOR_GRAY
+from esibot_vision.config import COLOR_YELLOW, COLOR_GREEN, COLOR_GRAY
 
 _MIN_ELONGATION = 2.5
 _MIN_HEIGHT_RATIO = 0.10

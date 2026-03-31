@@ -13,6 +13,7 @@ Convention (matches URDF servo_joint limits):
 
 """
 
+import logging
 import math
 import random
 import time
@@ -29,7 +30,9 @@ try:
     HARDWARE_AVAILABLE = True
 except ImportError:
     HARDWARE_AVAILABLE = False
-    print("RPi.GPIO not found — running in SIMULATION/MOCK mode.")
+    logging.getLogger(__name__).warning(
+        "RPi.GPIO not found — running in SIMULATION/MOCK mode."
+    )
 
 
 class EsibotSensors(Node):

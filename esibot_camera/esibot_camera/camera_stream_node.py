@@ -4,8 +4,10 @@ EsiBot Camera Stream Node
 ==========================
 """
 
+import math
 import threading
 import time
+import urllib.error
 import urllib.request
 
 import cv2
@@ -14,17 +16,8 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
-import math
 
-# Try to reach the ESP32-CAM network stack.
-# If urllib itself is unavailable (headless sim host), fall back to sim mode.
-try:
-    import urllib.request as _probe
-
-    HARDWARE_AVAILABLE = True
-except ImportError:
-    HARDWARE_AVAILABLE = False
-    print("urllib unavailable — running in SIMULATION/MOCK mode.")
+HARDWARE_AVAILABLE = True
 
 
 class CameraStreamNode(Node):

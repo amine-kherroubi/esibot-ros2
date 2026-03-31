@@ -13,22 +13,22 @@ Simulation:
 
 Usage:
   # Simulation + SLAM (build a map):
-  ros2 launch esibot_bringup full_bringup.launch.py sim_mode:=true mode:=slam
+  ros2 launch esibot_description full.launch.py sim_mode:=true mode:=slam
 
   # Simulation + Nav2 (navigate on existing map):
-  ros2 launch esibot_bringup full_bringup.launch.py sim_mode:=true mode:=nav
+  ros2 launch esibot_description full.launch.py sim_mode:=true mode:=nav
 
   # Camera + vision only (real ESP32-CAM required):
-  ros2 launch esibot_bringup full_bringup.launch.py mode:=vision
+  ros2 launch esibot_description full.launch.py mode:=vision
 
   # Camera + vision in sim mode:
-  ros2 launch esibot_bringup full_bringup.launch.py sim_mode:=true mode:=vision
+  ros2 launch esibot_description full.launch.py sim_mode:=true mode:=vision
 
   # Real hardware + SLAM:
-  ros2 launch esibot_bringup full_bringup.launch.py mode:=slam
+  ros2 launch esibot_description full.launch.py mode:=slam
 
   # Real hardware + Nav2:
-  ros2 launch esibot_bringup full_bringup.launch.py mode:=nav
+  ros2 launch esibot_description full.launch.py mode:=nav
 
 Launch order (fixed):
   1. robot_state_publisher   → /robot_description, /tf_static           (all modes)

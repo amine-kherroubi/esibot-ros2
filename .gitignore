@@ -1,6 +1,7 @@
-../build/
-../install/
-../log/
+# Workspace artifacts (only relevant if this repo is the workspace root)
+build/
+install/
+log/
 .snapshots/
 __pycache__/
 *.pyc

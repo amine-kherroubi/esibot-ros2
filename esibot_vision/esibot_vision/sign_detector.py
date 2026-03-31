@@ -10,7 +10,6 @@ in at least `confirm_frames` consecutive frames -> reduces noise.
 """
 
 import os
-from collections import defaultdict
 
 import cv2
 import numpy as np
