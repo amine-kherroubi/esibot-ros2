@@ -6,7 +6,7 @@
   map (provided at runtime by SLAM / AMCL — NOT in URDF)
   └── odom (provided at runtime by diff-drive odometry node — NOT in URDF)
       └── base_footprint  (Nav2/SLAM root, ground level)
-          └── base_link   (lower chassis centre)
+          └── base_link   (lower chassis center)
               ├── left_wheel   (continuous)
               ├── right_wheel  (continuous)
               ├── caster_wheel (fixed)
@@ -285,7 +285,7 @@
       <scan>
         <horizontal>
           <samples>36</samples> <resolution>1</resolution>
-          <min_angle>-1.57</min_angle> <max_angle>1.57</max_angle> 
+          <min_angle>-1.57</min_angle> <max_angle>1.57</max_angle>
         </horizontal>
       </scan>
       <range>

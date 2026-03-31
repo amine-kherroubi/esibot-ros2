@@ -21,7 +21,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 
 # ── Install resources ──────────────────────────────────────────────────────────
-# Copy config/, launch/, and maps/ to share/esibot_slam/ inside the ROS2 workspace.
+# Copy config/, launch/, and maps/ to share/esibot_slam/ inside the ROS 2 workspace.
 # These directories are then accessible at runtime via:
 #   get_package_share_directory("esibot_slam")
 install(

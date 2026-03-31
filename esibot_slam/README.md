@@ -39,7 +39,6 @@ esibot_slam/
 │   └── esibot_slam.rviz
 ├── launch/
 │   ├── slam.launch.py
-│   ├── slam_sim.launch.py
 │   └── save_map.launch.py
 └── maps/
 ```
@@ -50,7 +49,7 @@ esibot_slam/
 
 ```bash
 
-cd ~/esibot_ws
+cd ~/robot_ws
 colcon build --packages-select esibot_slam --symlink-install
 source install/setup.bash
 ```

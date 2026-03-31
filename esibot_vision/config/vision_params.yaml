@@ -1,25 +1,24 @@
 vision_node:
   ros__parameters:
-
-    # ── Image ──────────────────────────────────────────────────────────────
-    image_width:  320
+    # -- Image --------------------------------------------------------------
+    image_width: 320
     image_height: 240
 
-    # ── Détection voie (OpenCV) ────────────────────────────────────────────
-    lane_roi_ratio:  1.0      # toute l'image
-    lane_threshold:  60       # seuil binarisation (pixels sombres < threshold)
-    lane_min_area:   200      # aire minimale contour pour valider une ligne
+    # -- Lane detection (OpenCV) -------------------------------------------
+    lane_roi_ratio: 1.0 # full image
+    lane_threshold: 60 # binarization threshold (dark pixels < threshold)
+    lane_min_area: 200 # minimum contour area to accept a line
 
-    # ── Détection panneaux (YOLOv8n GTSRB) ────────────────────────────────
-    sign_model_path: ""       # chemin absolu vers signs_best.pt (vide = désactivé)
-    sign_conf:       0.60     # abaissé pour mieux détecter les panneaux
+    # -- Sign detection (YOLOv8n GTSRB) ------------------------------------
+    sign_model_path: "" # absolute path to signs_best.pt (empty = disabled)
+    sign_conf: 0.60 # lower to improve sign recall
 
-    # ── Détection obstacles (YOLOv8n COCO) ────────────────────────────────
-    obstacle_model_path: ""   # chemin absolu vers yolov8n.pt (vide = désactivé)
-    obstacle_conf:       0.40
-    obstacle_roi_ratio:  1.0  # toute l'image pour les obstacles
-    lane_width_ratio:    0.50 # fraction centrale de la largeur = zone de voie
+    # -- Obstacle detection (YOLOv8n COCO) ---------------------------------
+    obstacle_model_path: "" # absolute path to yolov8n.pt (empty = disabled)
+    obstacle_conf: 0.40
+    obstacle_roi_ratio: 1.0 # full image for obstacles
+    lane_width_ratio: 0.50 # central width fraction = lane region
 
-    # ── Publication ────────────────────────────────────────────────────────
+    # -- Publishing ---------------------------------------------------------
     publish_annotated: true
-    process_rate:      15.0   # Hz
+    process_rate: 15.0 # Hz

@@ -32,7 +32,6 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
-
     # ── Reference Grid ──────────────────────────────────────────────────────
     - Alpha: 0.5
       Cell Size: 1
@@ -172,8 +171,7 @@ Visualization Manager:
         map:
           odom:
             base_footprint:
-              base_link:
-                {}
+              base_link: {}
       Update Interval: 0
       Value: true
 

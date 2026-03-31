@@ -41,9 +41,9 @@ ros2 launch esibot_navigation nav2.launch.py \
 - `use_rviz`: launch RViz
 - `rviz_config`: RViz config path (defaults to Nav2 default view)
 
-## Simulation vs Real Robot
+## Simulation vs. real robot
 
-| Setting        | Simulation       | Real Robot | Rationale                                                                                                          |
+| Setting        | Simulation       | Real robot | Rationale                                                                                                          |
 | -------------- | ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
 | `use_sim_time` | `True`           | `False`    | Gazebo publishes `/clock`. If `use_sim_time` is `True` on a real robot, nodes wait on `/clock` and appear stalled. |
 | `scan_topic`   | `ultrasound_raw` | `scan`     | The simulated sensor publishes a different LaserScan topic than the real robot.                                    |

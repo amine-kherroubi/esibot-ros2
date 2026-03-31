@@ -101,15 +101,15 @@ def generate_launch_description():
             os.path.join(nav2_bringup_dir, "launch", "bringup_launch.py")
         ),
         launch_arguments={
-            "slam":              "False",
-            "use_localization":  "True",
-            "map":               LaunchConfiguration("map"),
-            "use_sim_time":      LaunchConfiguration("use_sim_time"),
-            "params_file":       configured_params,
-            "autostart":         LaunchConfiguration("autostart"),
-            "use_composition":   "False",
-            "use_respawn":       "False",
-            "log_level":         "info",
+            "slam": "False",
+            "use_localization": "True",
+            "map": LaunchConfiguration("map"),
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "params_file": configured_params,
+            "autostart": LaunchConfiguration("autostart"),
+            "use_composition": "False",
+            "use_respawn": "False",
+            "log_level": "info",
         }.items(),
     )
 

@@ -86,7 +86,7 @@ To inspect the robot's geometry, verify TF tree transformations, or test hardwar
 ros2 launch esibot_description display.launch.py
 ```
 
-full flow : 
+Full flow:
 ```bash
 ros2 launch esibot_bringup full_bringup.launch.py sim_mode:=true mode:=vision/slam/nav
 ```

@@ -1,5 +1,5 @@
-# esibot_vision — dépendances Python
+# esibot_vision - Python dependencies
 opencv-python>=4.8
 numpy>=1.24
 ultralytics>=8.0      # YOLOv8 (SignDetector + ObstacleDetector)
-PyYAML>=6.0           # pour prepare_gtsrb.py
+PyYAML>=6.0           # for prepare_gtsrb.py

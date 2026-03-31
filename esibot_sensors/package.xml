@@ -3,7 +3,7 @@
 <package format="3">
   <name>esibot_sensors</name>
   <version>0.0.0</version>
-  <description>Pseudo Lidar node for EsiBo</description>
+  <description>Pseudo-LiDAR sweep node for EsiBot.</description>
   <maintainer email="amira@todo.todo">amira</maintainer>
   <license>License</license>
   <depend>rclpy</depend>

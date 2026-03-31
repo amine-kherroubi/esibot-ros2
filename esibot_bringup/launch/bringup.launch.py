@@ -30,7 +30,11 @@ Usage:
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import (
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -91,7 +95,6 @@ def generate_launch_description():
         description="Launch teleop_twist_keyboard in a new terminal",
     )
 
-
     # ── Startup log — mirrors radar_node / slam_toolbox log pattern ───────────
     log_hw = LogInfo(
         msg=[
@@ -100,8 +103,12 @@ def generate_launch_description():
             "  EsiBot Bringup — HARDWARE MODE\n",
             "=======================================================\n",
             "  esibot_driver connecting to ESP32 via UART.\n",
-            "  Serial port : ", LaunchConfiguration("serial_port"), "\n",
-            "  Baud rate   : ", LaunchConfiguration("baud_rate"), "\n",
+            "  Serial port : ",
+            LaunchConfiguration("serial_port"),
+            "\n",
+            "  Baud rate   : ",
+            LaunchConfiguration("baud_rate"),
+            "\n",
             "  Topics      : /odom, /tf, /battery_state\n",
             "=======================================================\n",
         ],
@@ -140,11 +147,11 @@ def generate_launch_description():
         parameters=[
             LaunchConfiguration("params_file"),
             {
-                "serial_port":  LaunchConfiguration("serial_port"),
-                "baud_rate":    LaunchConfiguration("baud_rate"),
+                "serial_port": LaunchConfiguration("serial_port"),
+                "baud_rate": LaunchConfiguration("baud_rate"),
                 "cmd_vel_topic": LaunchConfiguration("cmd_vel_topic"),
                 "use_sim_time": LaunchConfiguration("use_sim_time"),
-                "sim_mode":     LaunchConfiguration("sim_mode"),
+                "sim_mode": LaunchConfiguration("sim_mode"),
             },
         ],
     )
@@ -159,16 +166,18 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("use_teleop")),
     )
 
-    return LaunchDescription([
-        declare_params_file,
-        declare_serial_port,
-        declare_baud_rate,
-        declare_use_sim_time,
-        declare_sim_mode,
-        declare_cmd_vel_topic,
-        declare_use_teleop,
-        log_hw,
-        log_sim,
-        driver_node,
-        teleop_node,
-    ])
+    return LaunchDescription(
+        [
+            declare_params_file,
+            declare_serial_port,
+            declare_baud_rate,
+            declare_use_sim_time,
+            declare_sim_mode,
+            declare_cmd_vel_topic,
+            declare_use_teleop,
+            log_hw,
+            log_sim,
+            driver_node,
+            teleop_node,
+        ]
+    )

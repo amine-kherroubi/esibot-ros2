@@ -17,7 +17,6 @@
 
 slam_toolbox:
   ros__parameters:
-
     # ── Solver plugin ───────────────────────────────────────────────────────
     solver_plugin: solver_plugins::CeresSolver
     ceres_linear_solver: SPARSE_NORMAL_CHOLESKY
@@ -78,8 +77,8 @@ slam_toolbox:
 
     # ── Minimum robot displacement to trigger SLAM update ───────────────────
     # Keep values low because the robot moves slowly with DC motors.
-    minimum_travel_distance: 0.10   # 10 cm
-    minimum_travel_heading: 0.20    # ~11 degrees
+    minimum_travel_distance: 0.10 # 10 cm
+    minimum_travel_heading: 0.20 # ~11 degrees
 
     # ── Scan matching ───────────────────────────────────────────────────────
     use_scan_matching: true
@@ -110,7 +109,7 @@ slam_toolbox:
     tf_buffer_duration: 30.0
 
     # ── Ceres solver memory ─────────────────────────────────────────────────
-    # 40 MB — fits comfortably on a 2 GB RPi 4 alongside ROS2 and Nav2.
+    # 40 MB - fits comfortably on a 2 GB RPi 4 alongside ROS 2 and Nav2.
     stack_size_to_use: 40000000
 
     # ── Interactive mode ────────────────────────────────────────────────────

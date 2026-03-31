@@ -53,7 +53,12 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PythonExpression
+from launch.substitutions import (
+    Command,
+    FindExecutable,
+    LaunchConfiguration,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -61,13 +66,13 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
 
     # ── Package paths ─────────────────────────────────────────────────────────
-    desc_pkg    = get_package_share_directory("esibot_description")
+    desc_pkg = get_package_share_directory("esibot_description")
     bringup_pkg = get_package_share_directory("esibot_bringup")
     sensors_pkg = get_package_share_directory("esibot_sensors")
-    slam_pkg    = get_package_share_directory("esibot_slam")
-    nav_pkg     = get_package_share_directory("esibot_navigation")
-    camera_pkg  = get_package_share_directory("esibot_camera")
-    vision_pkg  = get_package_share_directory("esibot_vision")
+    slam_pkg = get_package_share_directory("esibot_slam")
+    nav_pkg = get_package_share_directory("esibot_navigation")
+    camera_pkg = get_package_share_directory("esibot_camera")
+    vision_pkg = get_package_share_directory("esibot_vision")
 
     default_urdf = os.path.join(desc_pkg, "urdf", "esibot.urdf.xacro")
 
@@ -77,8 +82,7 @@ def generate_launch_description():
         "sim_mode",
         default_value="false",
         description=(
-            "true  = simulation mode (no ESP32, no GPIO). "
-            "false = real hardware."
+            "true  = simulation mode (no ESP32, no GPIO). " "false = real hardware."
         ),
     )
 
@@ -99,16 +103,14 @@ def generate_launch_description():
         description="Launch Foxglove WebSocket bridge on ws://localhost:8765",
     )
 
-    sim_mode     = LaunchConfiguration("sim_mode")
-    mode         = LaunchConfiguration("mode")
+    sim_mode = LaunchConfiguration("sim_mode")
+    mode = LaunchConfiguration("mode")
     use_foxglove = LaunchConfiguration("use_foxglove")
 
-    is_slam   = IfCondition(PythonExpression(["'", mode, "' == 'slam'"]))
-    is_nav    = IfCondition(PythonExpression(["'", mode, "' == 'nav'"]))
+    is_slam = IfCondition(PythonExpression(["'", mode, "' == 'slam'"]))
+    is_nav = IfCondition(PythonExpression(["'", mode, "' == 'nav'"]))
     is_vision = IfCondition(PythonExpression(["'", mode, "' == 'vision'"]))
-    is_slam_or_nav = IfCondition(
-        PythonExpression(["'", mode, "' in ['slam', 'nav']"])
-    )
+    is_slam_or_nav = IfCondition(PythonExpression(["'", mode, "' in ['slam', 'nav']"]))
 
     # ── Robot description ─────────────────────────────────────────────────────
     robot_description = ParameterValue(
@@ -123,8 +125,12 @@ def generate_launch_description():
             "=======================================================\n",
             "  EsiBot Full Bringup\n",
             "=======================================================\n",
-            "  sim_mode : ", sim_mode, "\n",
-            "  mode     : ", mode, "\n",
+            "  sim_mode : ",
+            sim_mode,
+            "\n",
+            "  mode     : ",
+            mode,
+            "\n",
             "  foxglove : ws://localhost:8765\n",
             "=======================================================\n",
         ]
@@ -245,17 +251,19 @@ def generate_launch_description():
         condition=is_nav,
     )
 
-    return LaunchDescription([
-        sim_mode_arg,
-        mode_arg,
-        use_foxglove_arg,
-        log_start,
-        robot_state_pub,    # immediate — all modes
-        foxglove_bridge,    # immediate — all modes
-        driver_launch,      # +2s      — all modes
-        radar_launch,       # +3s      — slam / nav only
-        camera_launch,      # +3s      — vision only
-        vision_launch,      # +4s      — vision only
-        slam_launch,        # +5s      — slam only
-        nav_launch,         # +5s      — nav only
-    ])
+    return LaunchDescription(
+        [
+            sim_mode_arg,
+            mode_arg,
+            use_foxglove_arg,
+            log_start,
+            robot_state_pub,  # immediate — all modes
+            foxglove_bridge,  # immediate — all modes
+            driver_launch,  # +2s      — all modes
+            radar_launch,  # +3s      — slam / nav only
+            camera_launch,  # +3s      — vision only
+            vision_launch,  # +4s      — vision only
+            slam_launch,  # +5s      — slam only
+            nav_launch,  # +5s      — nav only
+        ]
+    )

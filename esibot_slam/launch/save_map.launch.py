@@ -16,7 +16,7 @@ the /map topic and writes two files that together represent the
                                Contains: resolution, origin, free/occupied thresholds
 
 These two files are Task 3.5 deliverable #4:
-  "Saved SLAM map — .pgm + .yaml of a minimum 3m × 3m area"
+  "Saved SLAM map - .pgm + .yaml of a minimum 3 m x 3 m area"
 
 The saved map is also required by Task 3.6 (Nav2 navigation):
   ros2 launch esibot_bringup navigation.launch.py map:=<path_to_yaml>
@@ -38,12 +38,12 @@ Usage:
       map_dir:=/home/ubuntu/esibot_maps
 
 Prerequisites:
-  • slam_toolbox must be running and actively publishing on /map
-  • The robot must have explored a sufficient area
-  Verify: ros2 topic hz /map   → should show a non-zero rate
+  - slam_toolbox must be running and actively publishing on /map
+  - The robot must have explored a sufficient area
+  Verify: ros2 topic hz /map   -> should show a non-zero rate
 
 After saving, verify the files:
-  ls -lh ~/esibot_ws/src/esibot_slam/maps/
+  ls -lh ~/robot_ws/src/esibot_slam/maps/
   # or wherever map_dir points
 """
 
@@ -74,12 +74,12 @@ def generate_launch_description():
         default_value=os.path.join(slam_pkg, "maps"),
         description=(
             "Destination directory for the map files. "
-            "Default: share/esibot_slam/maps/ inside the ROS2 workspace."
+            "Default: share/esibot_slam/maps/ inside the ROS 2 workspace."
         ),
     )
 
     map_name = LaunchConfiguration("map_name")
-    map_dir  = LaunchConfiguration("map_dir")
+    map_dir = LaunchConfiguration("map_dir")
 
     # ── map_saver_cli ─────────────────────────────────────────────────────────
     #
@@ -88,7 +88,7 @@ def generate_launch_description():
     #
     # Arguments:
     #   -f <path>              : output file path without extension
-    #   --ros-args             : begin ROS2 parameter arguments
+    #   --ros-args             : begin ROS 2 parameter arguments
     #   -p save_map_timeout    : max milliseconds to wait for /map (5000 ms)
     #   -p free_thresh_default : cells below this probability are free (0.25)
     #   -p occupied_thresh_default : cells above this are obstacles (0.65)
@@ -97,12 +97,19 @@ def generate_launch_description():
     # Changing them will affect how Nav2 interprets the map during navigation.
     save_map = ExecuteProcess(
         cmd=[
-            "ros2", "run", "nav2_map_server", "map_saver_cli",
-            "-f", PathJoinSubstitution([map_dir, map_name]),
+            "ros2",
+            "run",
+            "nav2_map_server",
+            "map_saver_cli",
+            "-f",
+            PathJoinSubstitution([map_dir, map_name]),
             "--ros-args",
-            "-p", "save_map_timeout:=5000.0",
-            "-p", "free_thresh_default:=0.25",
-            "-p", "occupied_thresh_default:=0.65",
+            "-p",
+            "save_map_timeout:=5000.0",
+            "-p",
+            "free_thresh_default:=0.25",
+            "-p",
+            "occupied_thresh_default:=0.65",
         ],
         output="screen",
     )
@@ -123,9 +130,11 @@ def generate_launch_description():
         ]
     )
 
-    return LaunchDescription([
-        map_name_arg,
-        map_dir_arg,
-        log_info,
-        save_map,
-    ])
+    return LaunchDescription(
+        [
+            map_name_arg,
+            map_dir_arg,
+            log_info,
+            save_map,
+        ]
+    )

@@ -132,11 +132,13 @@ def generate_launch_description():
         condition=IfCondition(use_rviz),
     )
 
-    return LaunchDescription([
-        urdf_file_arg,
-        use_foxglove_arg,
-        use_rviz_arg,
-        robot_state_pub,
-        foxglove_bridge,
-        rviz2,
-    ])
+    return LaunchDescription(
+        [
+            urdf_file_arg,
+            use_foxglove_arg,
+            use_rviz_arg,
+            robot_state_pub,
+            foxglove_bridge,
+            rviz2,
+        ]
+    )

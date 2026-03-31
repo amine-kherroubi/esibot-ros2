@@ -1,15 +1,15 @@
 # esibot_sensors
 
-ROS2 package — Pseudo-LiDAR (HC-SR04 + SG90 servo)
-ROS2 Jazzy | Ubuntu 24.04
+ROS 2 package - Pseudo-LiDAR (HC-SR04 + SG90 servo)
+ROS 2 Jazzy | Ubuntu 24.04
 
 ---
 
 ## What this package does
 
-Sweeps an SG90 servo from −90° to +90° (centred on the robot's forward axis),
+Sweeps an SG90 servo from -90 deg to +90 deg (centered on the robot's forward axis),
 measures distance at each step with an HC-SR04 ultrasonic sensor, and publishes
-the result as a `sensor_msgs/LaserScan` on `/scan` — the same format slam_toolbox
+the result as a `sensor_msgs/LaserScan` on `/scan` - the same format slam_toolbox
 and Nav2 expect from a real LiDAR.
 
 It also publishes the current servo angle on `/joint_states` at each step so the
@@ -40,7 +40,7 @@ esibot_sensors/
 
 ## Prerequisites
 
-- ROS2 Jazzy
+- ROS 2 Jazzy
 - Python 3
 
 On Raspberry Pi (real hardware only):
@@ -65,7 +65,7 @@ source install/setup.bash
 
 ## Launch
 
-### Normal launch 
+### Default launch
 ```bash
 ros2 launch esibot_sensors radar.launch.py
 ```
@@ -82,51 +82,51 @@ ros2 launch esibot_sensors radar.launch.py sweep_period:=4.0
 ```
 
 > `sweep_period` must be longer than the worst-case sweep duration.
-> 19 steps × 110 ms (real hardware) ≈ 2.1 s. Default 3.0 s gives margin.
+> 19 steps x 110 ms (real hardware) ~ 2.1 s. Default 3.0 s gives margin.
 
 ---
 
 ## Launch parameters
 
-| Parameter | Default | Description |
-|---|---|---|
-| `servo_pin` | 17 | BCM GPIO pin for SG90 signal |
-| `trig_pin` | 27 | BCM GPIO pin for HC-SR04 TRIG |
-| `echo_pin` | 22 | BCM GPIO pin for HC-SR04 ECHO |
-| `sweep_period` | 3.0 | Seconds between sweeps |
-| `sim_mode` | false | Force simulation mode on real hardware |
+| Parameter      | Default | Description                            |
+| -------------- | ------- | -------------------------------------- |
+| `servo_pin`    | 17      | BCM GPIO pin for SG90 signal           |
+| `trig_pin`     | 27      | BCM GPIO pin for HC-SR04 TRIG          |
+| `echo_pin`     | 22      | BCM GPIO pin for HC-SR04 ECHO          |
+| `sweep_period` | 3.0     | Seconds between sweeps                 |
+| `sim_mode`     | false   | Force simulation mode on real hardware |
 
 ---
 
 ## Wiring (Raspberry Pi)
 
-| Component | Pin |
-|---|---|
-| Servo signal | GPIO 17 |
-| HC-SR04 TRIG | GPIO 27 |
+| Component    | Pin                           |
+| ------------ | ----------------------------- |
+| Servo signal | GPIO 17                       |
+| HC-SR04 TRIG | GPIO 27                       |
 | HC-SR04 ECHO | GPIO 22 (via voltage divider) |
-| VCC | 5V |
-| GND | GND |
+| VCC          | 5V                            |
+| GND          | GND                           |
 
 ---
 
 ## Topics published
 
-| Topic | Type | Rate | Description |
-|---|---|---|---|
-| `/scan` | `sensor_msgs/LaserScan` | ~0.33 Hz | Full sweep result |
-| `/joint_states` | `sensor_msgs/JointState` | 19×/sweep | Servo angle per step |
+| Topic           | Type                     | Rate      | Description          |
+| --------------- | ------------------------ | --------- | -------------------- |
+| `/scan`         | `sensor_msgs/LaserScan`  | ~0.33 Hz  | Full sweep result    |
+| `/joint_states` | `sensor_msgs/JointState` | 19x/sweep | Servo angle per step |
 
 ### /scan field values
 
-| Field | Value |
-|---|---|
-| `frame_id` | `laser_link` |
-| `angle_min` | −π/2 (−90°, faces right) |
-| `angle_max` | +π/2 (+90°, faces left) |
-| `angle_increment` | 0.1745 rad (10°) |
-| `range_min` | 0.02 m |
-| `range_max` | 4.0 m |
+| Field              | Value                           |
+| ------------------ | ------------------------------- |
+| `frame_id`         | `laser_link`                    |
+| `angle_min`        | -pi/2 (-90 deg, faces right)    |
+| `angle_max`        | +pi/2 (+90 deg, faces left)     |
+| `angle_increment`  | 0.1745 rad (10°)                |
+| `range_min`        | 0.02 m                          |
+| `range_max`        | 4.0 m                           |
 | Out-of-range value | `range_max + 1.0` (per REP-117) |
 
 ---
@@ -142,7 +142,7 @@ so that `/joint_states` is consumed and `/tf` is updated.
 ros2 launch esibot_description display.launch.py
 
 # Terminal 2
-ros2 launch esibot_sensors radar_node.launch.py
+ros2 launch esibot_sensors radar.launch.py
 ```
 
 ---
@@ -170,10 +170,9 @@ Expected `/scan` output:
 
 Expected `/joint_states` output:
 - `name: [servo_joint]`
-- `position` stepping from −1.5707 to +1.5707 across 19 messages per sweep
+- `position` stepping from -1.5707 to +1.5707 across 19 messages per sweep
 
 Expected TF tree (from `view_frames`):
 ```
-base_footprint → base_link → upper_plate → servo_base → servo_link → laser_link
+base_footprint -> base_link -> upper_plate -> servo_base -> servo_link -> laser_link
 ```
-

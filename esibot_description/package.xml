@@ -17,7 +17,7 @@
     <exec_depend>       — needed at runtime (launch, executables)
     <test_depend>       — only for running tests
 
-  ROS2 Jazzy note:
+  ROS 2 Jazzy note:
     apt package: ros-jazzy-xacro  →  package.xml: <exec_depend>xacro</exec_depend>
     (no distro prefix, underscores not hyphens)
 -->
@@ -41,7 +41,7 @@
   <author>Student B</author>
   <author>Student C</author>
 
-  <!-- Build tool — required for all CMake-based ROS2 packages -->
+  <!-- Build tool — required for all CMake-based ROS 2 packages -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <!--

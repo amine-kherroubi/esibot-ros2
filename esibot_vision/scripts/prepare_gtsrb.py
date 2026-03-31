@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """
-prepare_gtsrb.py — Conversion GTSRB → format YOLOv8
-=====================================================
-Utilise le CSV Train.csv (contient les ROI réels de chaque panneau).
+prepare_gtsrb.py - Convert GTSRB to YOLOv8 format
+=================================================
+Uses Train.csv (contains the real ROIs for each sign).
 
-Structure attendue (archive Kaggle GTSRB) :
+Expected structure (Kaggle GTSRB archive):
   archive/
   ├── Train/
-  │   ├── 0/  1/  2/ … 42/   ← images classées
-  ├── Train.csv               ← Width,Height,Roi.X1,Roi.Y1,Roi.X2,Roi.Y2,ClassId,Path
+  │   ├── 0/  1/  2/ ... 42/   <- class folders
+  ├── Train.csv               <- Width,Height,Roi.X1,Roi.Y1,Roi.X2,Roi.Y2,ClassId,Path
   ├── Test/
   └── Test.csv
 
-Résultat dans <output_dir>/dataset/ :
+Output under <output_dir>/dataset/:
   dataset/
   ├── images/train/  val/
   ├── labels/train/  val/
   └── dataset.yaml
 
-Usage :
-  python3 prepare_gtsrb.py --src ~/Téléchargements/archive --out ~/esibot_ws/src/esibot_vision
+Usage:
+  python3 prepare_gtsrb.py --src ~/Downloads/archive --out ~/robot_ws/src/esibot_vision
 """
 
 import argparse
@@ -30,16 +30,16 @@ import shutil
 import yaml
 
 
-# ── Classes retenues (GTSRB class_id → label local) ──────────────────────────
+# -- Selected classes (GTSRB class_id -> local label) ------------------------
 SELECTED = {
-    1:  0,   # speed_30
-    2:  1,   # speed_50
-    4:  2,   # speed_70
-    5:  3,   # speed_80
-    14: 4,   # stop
-    35: 5,   # dir_straight
-    38: 6,   # dir_right
-    39: 7,   # dir_left
+    1: 0,  # speed_30
+    2: 1,  # speed_50
+    4: 2,  # speed_70
+    5: 3,  # speed_80
+    14: 4,  # stop
+    35: 5,  # dir_straight
+    38: 6,  # dir_right
+    39: 7,  # dir_left
 }
 
 NAMES = {
@@ -58,18 +58,22 @@ RANDOM_SEED = 42
 
 
 def main():
-    parser = argparse.ArgumentParser(description="GTSRB → YOLOv8 dataset")
-    parser.add_argument("--src", required=True,
-                        help="Dossier racine archive GTSRB (contient Train.csv)")
-    parser.add_argument("--out", required=True,
-                        help="Dossier de sortie (dataset/ sera créé dedans)")
+    parser = argparse.ArgumentParser(description="GTSRB -> YOLOv8 dataset")
+    parser.add_argument(
+        "--src",
+        required=True,
+        help="Root folder of the GTSRB archive (contains Train.csv)",
+    )
+    parser.add_argument(
+        "--out", required=True, help="Output folder (dataset/ will be created inside)"
+    )
     args = parser.parse_args()
 
     src = os.path.expanduser(args.src)
     out = os.path.expanduser(args.out)
-    ds  = os.path.join(out, "dataset")
+    ds = os.path.join(out, "dataset")
 
-    # ── Créer arborescence ────────────────────────────────────────────────
+    # -- Create directory structure ---------------------------------------
     for split in ("train", "val"):
         os.makedirs(os.path.join(ds, "images", split), exist_ok=True)
         os.makedirs(os.path.join(ds, "labels", split), exist_ok=True)
@@ -77,10 +81,10 @@ def main():
     print(f"[prepare_gtsrb] Source  : {src}")
     print(f"[prepare_gtsrb] Dataset : {ds}")
 
-    # ── Lire Train.csv ────────────────────────────────────────────────────
+    # -- Read Train.csv ----------------------------------------------------
     csv_path = os.path.join(src, "Train.csv")
     if not os.path.isfile(csv_path):
-        raise FileNotFoundError(f"Train.csv introuvable : {csv_path}")
+        raise FileNotFoundError(f"Train.csv not found: {csv_path}")
 
     rows_by_class: dict[int, list] = {c: [] for c in SELECTED.values()}
 
@@ -95,14 +99,14 @@ def main():
             if not os.path.isfile(img_path):
                 continue
 
-            w    = int(row["Width"])
-            h    = int(row["Height"])
-            x1   = int(row["Roi.X1"])
-            y1   = int(row["Roi.Y1"])
-            x2   = int(row["Roi.X2"])
-            y2   = int(row["Roi.Y2"])
+            w = int(row["Width"])
+            h = int(row["Height"])
+            x1 = int(row["Roi.X1"])
+            y1 = int(row["Roi.Y1"])
+            x2 = int(row["Roi.X2"])
+            y2 = int(row["Roi.Y2"])
 
-            # Normaliser en format YOLO (cx, cy, bw, bh)
+            # Normalize to YOLO format (cx, cy, bw, bh)
             cx = ((x1 + x2) / 2.0) / w
             cy = ((y1 + y2) / 2.0) / h
             bw = (x2 - x1) / w
@@ -117,13 +121,13 @@ def main():
             label = SELECTED[gtsrb_id]
             rows_by_class[label].append((img_path, label, cx, cy, bw, bh))
 
-    # ── Bilan par classe ──────────────────────────────────────────────────
+    # -- Summary by class --------------------------------------------------
     total = sum(len(v) for v in rows_by_class.values())
-    print(f"\n[prepare_gtsrb] Images retenues : {total}")
+    print(f"\n[prepare_gtsrb] Images selected: {total}")
     for lbl, rows in rows_by_class.items():
         print(f"  {NAMES[lbl]:15s} ({lbl}) : {len(rows)} images")
 
-    # ── Split train / val ─────────────────────────────────────────────────
+    # -- Train/val split ---------------------------------------------------
     random.seed(RANDOM_SEED)
     all_rows = []
     for rows in rows_by_class.values():
@@ -131,18 +135,18 @@ def main():
     random.shuffle(all_rows)
 
     n_val = int(len(all_rows) * VAL_RATIO)
-    val_rows   = all_rows[:n_val]
+    val_rows = all_rows[:n_val]
     train_rows = all_rows[n_val:]
 
-    print(f"\n[prepare_gtsrb] Train : {len(train_rows)}  Val : {len(val_rows)}")
+    print(f"\n[prepare_gtsrb] Train: {len(train_rows)}  Val: {len(val_rows)}")
 
-    # ── Copier images + labels ────────────────────────────────────────────
+    # -- Copy images + labels ----------------------------------------------
     counters = {"train": 0, "val": 0}
 
     for split, rows in (("train", train_rows), ("val", val_rows)):
         for img_path, label, cx, cy, bw, bh in rows:
             stem = os.path.splitext(os.path.basename(img_path))[0]
-            # Éviter les collisions de noms
+            # Avoid name collisions
             new_name = f"{label}_{stem}"
 
             dst_img = os.path.join(ds, "images", split, new_name + ".png")
@@ -154,20 +158,20 @@ def main():
 
             counters[split] += 1
 
-    # ── dataset.yaml ─────────────────────────────────────────────────────
+    # -- dataset.yaml ------------------------------------------------------
     yaml_path = os.path.join(ds, "dataset.yaml")
     dataset_cfg = {
-        "path":  ds,
+        "path": ds,
         "train": "images/train",
-        "val":   "images/val",
-        "nc":    len(NAMES),
+        "val": "images/val",
+        "nc": len(NAMES),
         "names": [NAMES[i] for i in range(len(NAMES))],
     }
     with open(yaml_path, "w") as f:
         yaml.dump(dataset_cfg, f, default_flow_style=False, allow_unicode=True)
 
-    print(f"\n[prepare_gtsrb] Dataset YAML : {yaml_path}")
-    print(f"[prepare_gtsrb] Terminé — train:{counters['train']}  val:{counters['val']}")
+    print(f"\n[prepare_gtsrb] Dataset YAML: {yaml_path}")
+    print(f"[prepare_gtsrb] Done - train:{counters['train']}  val:{counters['val']}")
 
 
 if __name__ == "__main__":
