@@ -13,7 +13,6 @@ Convention (matches URDF servo_joint limits):
 
 """
 
-import logging
 import math
 import random
 import time
@@ -23,21 +22,24 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import JointState
 
+from esibot_logging import get_logger, setup_logging
+
 # Try to import GPIO. If unavailable, fall back to simulation mode.
 try:
     import RPi.GPIO as GPIO
 
     HARDWARE_AVAILABLE = True
-except ImportError:
+    GPIO_IMPORT_ERROR = None
+except ImportError as exc:
+    GPIO = None
     HARDWARE_AVAILABLE = False
-    logging.getLogger(__name__).warning(
-        "RPi.GPIO not found — running in SIMULATION/MOCK mode."
-    )
+    GPIO_IMPORT_ERROR = exc
 
 
 class EsibotSensors(Node):
     def __init__(self):
         super().__init__("radar_node")
+        self.log = get_logger(node=self)
         self.publisher_ = self.create_publisher(LaserScan, "/scan", 10)
         self.joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
 
@@ -63,7 +65,8 @@ class EsibotSensors(Node):
         self.servo_pin = self.get_parameter("servo_pin").value
         self.trig_pin = self.get_parameter("trig_pin").value
         self.echo_pin = self.get_parameter("echo_pin").value
-        sweep_period = self.get_parameter("sweep_period").value
+        # Keep parameter for compatibility; preserve previous fixed-timer behavior.
+        self._sweep_period = float(self.get_parameter("sweep_period").value)
 
         if HARDWARE_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
@@ -74,7 +77,11 @@ class EsibotSensors(Node):
             self.pwm_servo = GPIO.PWM(self.servo_pin, 50)
             self.pwm_servo.start(0)
         else:
-            self.get_logger().info(
+            self.log.warning(
+                "RPi.GPIO not found — running in SIMULATION/MOCK mode. "
+                f"({GPIO_IMPORT_ERROR})"
+            )
+            self.log.info(
                 "No hardware detected. Publishing simulated scan data."
             )
 
@@ -92,7 +99,7 @@ class EsibotSensors(Node):
     def timer_callback(self):
         # skip this tick if the previous sweep hasn't finished.
         if self._scanning:
-            self.get_logger().warn(
+            self.log.warning(
                 "Previous sweep still running — skipping this tick. "
                 "Consider increasing the timer period."
             )
@@ -146,7 +153,7 @@ class EsibotSensors(Node):
         msg.time_increment = float(sweep_duration) / (len(ranges) - 1)
 
         self.publisher_.publish(msg)
-        self.get_logger().info(
+        self.log.info(
             f"Published LaserScan: {len(ranges)} ranges, "
             f"sweep_time={sweep_duration:.3f}s, "
             f"ranges={[f'{r:.2f}' for r in ranges]}"
@@ -199,7 +206,7 @@ class EsibotSensors(Node):
         timeout = time.time() + 0.05  # 50 ms timeout
         while GPIO.input(self.echo_pin) == 0:
             if time.time() > timeout:
-                self.get_logger().warn("HC-SR04: echo start timeout")
+                self.log.warning("HC-SR04: echo start timeout")
                 return self.range_max + 1.0
         start = time.time()  # rising edge — captured once, after loop exits
 
@@ -207,7 +214,7 @@ class EsibotSensors(Node):
         timeout = time.time() + 0.05
         while GPIO.input(self.echo_pin) == 1:
             if time.time() > timeout:
-                self.get_logger().warn("HC-SR04: echo end timeout")
+                self.log.warning("HC-SR04: echo end timeout")
                 return self.range_max + 1.0
         end = time.time()  # falling edge — captured once, after loop exits
 
@@ -218,6 +225,7 @@ class EsibotSensors(Node):
 
 
 def main(args=None):
+    setup_logging()
     rclpy.init(args=args)
     node = EsibotSensors()
     try:
@@ -228,8 +236,15 @@ def main(args=None):
         if HARDWARE_AVAILABLE:
             node.pwm_servo.stop()
             GPIO.cleanup()
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

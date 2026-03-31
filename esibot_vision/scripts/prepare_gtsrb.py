@@ -29,6 +29,7 @@ import random
 import shutil
 import yaml
 
+from esibot_logging import get_logger, setup_logging
 
 # -- Selected classes (GTSRB class_id -> local label) ------------------------
 SELECTED = {
@@ -58,6 +59,8 @@ RANDOM_SEED = 42
 
 
 def main():
+    setup_logging()
+    log = get_logger(__name__)
     parser = argparse.ArgumentParser(description="GTSRB -> YOLOv8 dataset")
     parser.add_argument(
         "--src",
@@ -78,8 +81,8 @@ def main():
         os.makedirs(os.path.join(ds, "images", split), exist_ok=True)
         os.makedirs(os.path.join(ds, "labels", split), exist_ok=True)
 
-    print(f"[prepare_gtsrb] Source  : {src}")
-    print(f"[prepare_gtsrb] Dataset : {ds}")
+    log.info(f"Source  : {src}")
+    log.info(f"Dataset : {ds}")
 
     # -- Read Train.csv ----------------------------------------------------
     csv_path = os.path.join(src, "Train.csv")
@@ -123,9 +126,9 @@ def main():
 
     # -- Summary by class --------------------------------------------------
     total = sum(len(v) for v in rows_by_class.values())
-    print(f"\n[prepare_gtsrb] Images selected: {total}")
+    log.info(f"Images selected: {total}")
     for lbl, rows in rows_by_class.items():
-        print(f"  {NAMES[lbl]:15s} ({lbl}) : {len(rows)} images")
+        log.info(f"  {NAMES[lbl]:15s} ({lbl}) : {len(rows)} images")
 
     # -- Train/val split ---------------------------------------------------
     random.seed(RANDOM_SEED)
@@ -138,7 +141,7 @@ def main():
     val_rows = all_rows[:n_val]
     train_rows = all_rows[n_val:]
 
-    print(f"\n[prepare_gtsrb] Train: {len(train_rows)}  Val: {len(val_rows)}")
+    log.info(f"Train: {len(train_rows)}  Val: {len(val_rows)}")
 
     # -- Copy images + labels ----------------------------------------------
     counters = {"train": 0, "val": 0}
@@ -170,8 +173,8 @@ def main():
     with open(yaml_path, "w") as f:
         yaml.dump(dataset_cfg, f, default_flow_style=False, allow_unicode=True)
 
-    print(f"\n[prepare_gtsrb] Dataset YAML: {yaml_path}")
-    print(f"[prepare_gtsrb] Done - train:{counters['train']}  val:{counters['val']}")
+    log.info(f"Dataset YAML: {yaml_path}")
+    log.info(f"Done - train:{counters['train']}  val:{counters['val']}")
 
 
 if __name__ == "__main__":

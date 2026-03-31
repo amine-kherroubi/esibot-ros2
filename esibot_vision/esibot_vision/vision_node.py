@@ -26,6 +26,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Bool, Float32, String
 
+from esibot_logging import get_logger, setup_logging
 from esibot_vision.lane_detector import LaneDetector
 from esibot_vision.sign_detector import SignDetector
 from esibot_vision.obstacle_detector import ObstacleDetector
@@ -36,6 +37,7 @@ class VisionNode(Node):
 
     def __init__(self):
         super().__init__("vision_node")
+        self.log = get_logger(node=self)
 
         # ── Parameters ───────────────────────────────────────────────────
         self.declare_parameter("image_width", 320)
@@ -104,7 +106,7 @@ class VisionNode(Node):
         # ── Timer ────────────────────────────────────────────────────────
         self.create_timer(1.0 / self.process_rate, self._process)
 
-        self.get_logger().info(
+        self.log.info(
             f"vision_node started - {self.process_rate:.0f} Hz | "
             f"lane OK | "
             f"signs {'OK' if self._signs.available else 'DISABLED'} | "
@@ -150,7 +152,7 @@ class VisionNode(Node):
             frame = self._frame.copy()
 
         if time.time() - self._last_frame_time > 5.0:
-            self.get_logger().warn(
+            self.log.warning(
                 "No frame received for 5s", throttle_duration_sec=5.0
             )
 
@@ -217,18 +219,18 @@ class VisionNode(Node):
 
         # ── Logs ─────────────────────────────────────────────────────────
         if lane_status != "IN_LANE":
-            self.get_logger().info(
+            self.log.info(
                 f"Lane: {lane_status}  err={lane_error:+.2f}", throttle_duration_sec=1.0
             )
 
         if sign_detections:
-            self.get_logger().info(
+            self.log.info(
                 f"Signs: {[d['label'] for d in sign_detections]}",
                 throttle_duration_sec=1.0,
             )
 
         if obstacle_in_lane:
-            self.get_logger().warn(
+            self.log.warning(
                 f"OBSTACLE IN LANE ({len(obstacle_detections)} detected)",
                 throttle_duration_sec=0.5,
             )
@@ -248,6 +250,7 @@ class VisionNode(Node):
 
 # ─────────────────────────────────────────────────────────────────────────────
 def main(args=None):
+    setup_logging()
     rclpy.init(args=args)
     node = VisionNode()
     try:
@@ -255,8 +258,15 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

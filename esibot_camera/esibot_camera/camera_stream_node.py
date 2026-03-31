@@ -17,6 +17,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
 
+from esibot_logging import get_logger, setup_logging
+
 HARDWARE_AVAILABLE = True
 
 
@@ -24,6 +26,7 @@ class CameraStreamNode(Node):
 
     def __init__(self):
         super().__init__("esibot_camera_node")
+        self.log = get_logger(node=self)
 
         # ── Parameters ───────────────────────────────────────────────────────
         self.declare_parameter("esp32_ip", "192.168.1.80")
@@ -62,7 +65,7 @@ class CameraStreamNode(Node):
 
         if self.sim_mode:
             # Mirrors radar node: "No hardware detected. Publishing simulated..."
-            self.get_logger().info(
+            self.log.info(
                 "No hardware detected. Publishing simulated camera frames."
             )
 
@@ -78,7 +81,7 @@ class CameraStreamNode(Node):
         self.capture_thread = threading.Thread(target=self.capture_loop, daemon=True)
         self.capture_thread.start()
 
-        self.get_logger().info(
+        self.log.info(
             f"esibot_camera — mode={'SIM' if self.sim_mode else 'LIVE'}"
             + (f", URL: {self.stream_url}" if not self.sim_mode else "")
         )
@@ -93,7 +96,7 @@ class CameraStreamNode(Node):
 
                 if frame is not None:
                     if self.frame_count == 0:
-                        self.get_logger().info(
+                        self.log.info(
                             f"First frame: {frame.shape}, " f"mean={frame.mean():.1f}"
                         )
                     processed = self.process_frame(frame)
@@ -102,7 +105,7 @@ class CameraStreamNode(Node):
                     self.frame_count += 1
 
             except Exception as e:
-                self.get_logger().error(f"Capture error: {e}")
+                self.log.error(f"Capture error: {e}")
                 self._publish_status(f"ERROR: {e}")
                 self._stream = None  # force reconnect on next iteration
                 time.sleep(self.reconnect_delay)
@@ -131,14 +134,14 @@ class CameraStreamNode(Node):
         if self._stream is None:
             self._buf = bytes()
             try:
-                self.get_logger().info(f"Connecting to ESP32-CAM: {self.stream_url}")
+                self.log.info(f"Connecting to ESP32-CAM: {self.stream_url}")
                 self._stream = urllib.request.urlopen(self.stream_url, timeout=10)
-                self.get_logger().info("ESP32-CAM connected.")
+                self.log.info("ESP32-CAM connected.")
                 self._publish_status("CONNECTED")
             except urllib.error.URLError as e:
-                self.get_logger().warn(f"ESP32 unreachable: {e.reason}")
+                self.log.warning(f"ESP32 unreachable: {e.reason}")
                 self._publish_status(f"DISCONNECTED: {e.reason}")
-                self.get_logger().info(f"Reconnecting in {self.reconnect_delay}s...")
+                self.log.info(f"Reconnecting in {self.reconnect_delay}s...")
                 self._stream = None
                 time.sleep(self.reconnect_delay)
                 return None
@@ -299,7 +302,7 @@ class CameraStreamNode(Node):
     def process_frame(self, frame: np.ndarray) -> np.ndarray:
         """Post-process a decoded BGR frame before publishing."""
         if frame.shape[:2] != (self.frame_h, self.frame_w):
-            self.get_logger().warn(
+            self.log.warning(
                 f"Frame size mismatch: got {frame.shape[1]}x{frame.shape[0]}, "
                 f"resizing to {self.frame_w}x{self.frame_h}",
                 throttle_duration_sec=5.0,
@@ -397,6 +400,7 @@ class CameraStreamNode(Node):
 
 
 def main(args=None):
+    setup_logging()
     rclpy.init(args=args)
     node = CameraStreamNode()
     try:
@@ -404,8 +408,15 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

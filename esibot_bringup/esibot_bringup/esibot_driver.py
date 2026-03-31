@@ -19,6 +19,8 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import BatteryState
 from tf2_ros import TransformBroadcaster
 
+from esibot_logging import get_logger, setup_logging
+
 DEFAULT_WHEEL_BASE = 0.16
 DEFAULT_WHEEL_RADIUS = 0.033
 DEFAULT_TICKS_PER_REV = 330
@@ -39,6 +41,7 @@ MAX_ANGULAR_VEL = 2.0  # rad/s
 class EsibotDriver(Node):
     def __init__(self) -> None:
         super().__init__("esibot_driver")
+        self.log = get_logger(node=self)
 
         # Parameters
         self.declare_parameter("serial_port", "/dev/ttyUSB0")
@@ -75,53 +78,54 @@ class EsibotDriver(Node):
         self._cmd_vel_timeout = float(self.get_parameter("cmd_vel_timeout").value)
         self._reconnect_on_error = bool(self.get_parameter("reconnect_on_error").value)
         self._reconnect_interval = float(self.get_parameter("reconnect_interval").value)
+        self._sim_mode = bool(self.get_parameter("sim_mode").value)
 
         # ── Parameter validation ──────────────────────────────────────────────
         if self._publish_rate <= 0.0:
-            self.get_logger().warning(
+            self.log.warning(
                 f"publish_rate must be > 0.0. Falling back to {DEFAULT_PUBLISH_RATE:.1f} Hz."
             )
             self._publish_rate = DEFAULT_PUBLISH_RATE
 
         if self._serial_timeout <= 0.0:
-            self.get_logger().warning(
+            self.log.warning(
                 f"serial_timeout must be > 0.0. Falling back to {DEFAULT_SERIAL_TIMEOUT:.2f}s."
             )
             self._serial_timeout = DEFAULT_SERIAL_TIMEOUT
 
         if self._ticks_per_rev <= 0:
-            self.get_logger().warning(
+            self.log.warning(
                 f"encoder_ticks_per_rev must be > 0. Falling back to {DEFAULT_TICKS_PER_REV}."
             )
             self._ticks_per_rev = DEFAULT_TICKS_PER_REV
 
         if self._wheel_base <= 0.0:
-            self.get_logger().warning(
+            self.log.warning(
                 f"wheel_base must be > 0.0. Falling back to {DEFAULT_WHEEL_BASE:.3f}."
             )
             self._wheel_base = DEFAULT_WHEEL_BASE
 
         if self._wheel_radius <= 0.0:
-            self.get_logger().warning(
+            self.log.warning(
                 f"wheel_radius must be > 0.0. Falling back to {DEFAULT_WHEEL_RADIUS:.3f}."
             )
             self._wheel_radius = DEFAULT_WHEEL_RADIUS
 
         if self._cmd_vel_timeout < 0.0:
-            self.get_logger().warning(
+            self.log.warning(
                 "cmd_vel_timeout must be >= 0.0. Disabling timeout."
             )
             self._cmd_vel_timeout = 0.0
 
         if self._reconnect_interval <= 0.0:
-            self.get_logger().warning(
+            self.log.warning(
                 f"reconnect_interval must be > 0.0. Falling back to {DEFAULT_RECONNECT_INTERVAL:.1f}s."
             )
             self._reconnect_interval = DEFAULT_RECONNECT_INTERVAL
 
         publish_period = 1.0 / self._publish_rate
         if self._serial_timeout > publish_period:
-            self.get_logger().warning(
+            self.log.warning(
                 f"serial_timeout ({self._serial_timeout:.3f}s) longer than "
                 f"publish period ({publish_period:.3f}s)..."
             )
@@ -163,8 +167,8 @@ class EsibotDriver(Node):
         self._tf_broadcaster = TransformBroadcaster(self)
 
         self._serial_conn = None
-        if self.get_parameter("sim_mode").value:
-            self.get_logger().info(
+        if self._sim_mode:
+            self.log.info(
                 "sim_mode=true — skipping serial connection, using simulated odometry."
             )
         else:
@@ -173,7 +177,7 @@ class EsibotDriver(Node):
         self._last_update_time = self.get_clock().now()
         self._timer = self.create_timer(1.0 / self._publish_rate, self._update)
 
-        self.get_logger().info(
+        self.log.info(
             "esibot_driver started (port=%s, baud=%d, rate=%.1fHz, "
             "odom_topic=%s, cmd_vel_topic=%s, frames=%s->%s, "
             "vel_clamp=±%.2fm/s ±%.2frad/s)"
@@ -201,7 +205,7 @@ class EsibotDriver(Node):
         try:
             import serial
         except Exception as exc:
-            self.get_logger().warning(
+            self.log.warning(
                 f"pyserial not available ({exc}). Running without hardware."
             )
             self._serial_conn = None
@@ -213,9 +217,9 @@ class EsibotDriver(Node):
                 self._baud_rate,
                 timeout=self._serial_timeout,
             )
-            self.get_logger().info(f"Serial connected on {self._serial_port}")
+            self.log.info(f"Serial connected on {self._serial_port}")
         except Exception as exc:
-            self.get_logger().warning(
+            self.log.warning(
                 f"Serial not available on {self._serial_port} ({exc}). Running without hardware."
             )
             self._serial_conn = None
@@ -223,7 +227,7 @@ class EsibotDriver(Node):
     def _update(self) -> None:
         now = self.get_clock().now()
 
-        if self._serial_conn is None and self._reconnect_on_error:
+        if not self._sim_mode and self._serial_conn is None and self._reconnect_on_error:
             since_reconnect = (now - self._last_reconnect_time).nanoseconds * 1e-9
             if since_reconnect >= self._reconnect_interval:
                 self._last_reconnect_time = now
@@ -233,7 +237,7 @@ class EsibotDriver(Node):
             since_cmd = (now - self._last_cmd_time).nanoseconds * 1e-9
             if since_cmd > self._cmd_vel_timeout:
                 if not self._cmd_timeout_active:
-                    self.get_logger().warning(
+                    self.log.warning(
                         f"cmd_vel timeout ({self._cmd_vel_timeout:.2f}s) exceeded; stopping the robot."
                     )
                 self._cmd_timeout_active = True
@@ -320,7 +324,7 @@ class EsibotDriver(Node):
             return left_ticks, right_ticks, self._last_battery_voltage
 
         except Exception as exc:
-            self.get_logger().warning(f"Encoder parse error: {exc}")
+            self.log.warning(f"Encoder parse error: {exc}")
             return (
                 self._prev_left_ticks,
                 self._prev_right_ticks,
@@ -351,7 +355,7 @@ class EsibotDriver(Node):
         try:
             self._serial_conn.write(f"CMD:{v_right:.3f},{v_left:.3f}\n".encode())
         except Exception as exc:
-            self.get_logger().warning(f"Serial write error: {exc}")
+            self.log.warning(f"Serial write error: {exc}")
             try:
                 self._serial_conn.close()
             except Exception:
@@ -429,6 +433,7 @@ def _yaw_to_quaternion(yaw: float) -> Quaternion:
 
 
 def main(args=None) -> None:
+    setup_logging()
     rclpy.init(args=args)
     node = EsibotDriver()
     try:
@@ -436,8 +441,15 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

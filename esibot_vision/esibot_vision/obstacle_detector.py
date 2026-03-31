@@ -11,7 +11,10 @@ import os
 import cv2
 import numpy as np
 
+from esibot_logging import get_logger
 from esibot_vision.config import COLOR_RED, COLOR_ORANGE, COLOR_WHITE
+
+log = get_logger(__name__)
 
 
 _IGNORE_CLASSES = {
@@ -50,9 +53,7 @@ class ObstacleDetector:
         if model_path and os.path.isfile(model_path):
             self._load_model(model_path)
         else:
-            import logging
-
-            logging.getLogger(__name__).warning(
+            log.warning(
                 f"[ObstacleDetector] Model not found: {model_path} - detection disabled"
             )
 

@@ -107,12 +107,6 @@ def generate_launch_description():
     is_sim = IfCondition(PythonExpression(["'", mode, "' == 'sim'"]))
     is_hw = IfCondition(PythonExpression(["'", mode, "' == 'hw'"]))
 
-    # Condition: autostart=true AND use_lifecycle_manager=false
-    # When use_lifecycle_manager=true the external manager drives transitions.
-    do_autostart = IfCondition(
-        AndSubstitution(autostart, NotSubstitution(use_lifecycle_manager))
-    )
-
     # ── [1] relay_node — SIMULATION ONLY ────────────────────────────────────
     #
     # gz_bridge maps the Gazebo gpu_lidar to /ultrasound_raw (LaserScan).

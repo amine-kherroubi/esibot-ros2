@@ -19,8 +19,12 @@ import argparse
 import os
 import shutil
 
+from esibot_logging import get_logger, setup_logging
+
 
 def main():
+    setup_logging()
+    log = get_logger(__name__)
     parser = argparse.ArgumentParser(description="Train YOLOv8n on EsiBot GTSRB")
     parser.add_argument(
         "--dataset",
@@ -63,11 +67,11 @@ def main():
     except ImportError:
         raise ImportError("Install ultralytics: pip install ultralytics")
 
-    print(f"[train_signs] Dataset  : {dataset}")
-    print(f"[train_signs] Output   : {output}")
-    print(f"[train_signs] Epochs   : {args.epochs}")
-    print(f"[train_signs] Batch    : {args.batch}")
-    print(f"[train_signs] Img size : {args.imgsz}")
+    log.info(f"Dataset  : {dataset}")
+    log.info(f"Output   : {output}")
+    log.info(f"Epochs   : {args.epochs}")
+    log.info(f"Batch    : {args.batch}")
+    log.info(f"Img size : {args.imgsz}")
 
     # -- Load pre-trained YOLOv8n -----------------------------------------
     model = YOLO("yolov8n.pt")
@@ -89,7 +93,7 @@ def main():
     if args.device:
         train_args["device"] = args.device
 
-    results = model.train(**train_args)
+    model.train(**train_args)
 
     # -- Copy best.pt to models/signs_best.pt ------------------------------
     best_src = os.path.join(output, "runs", "signs", "weights", "best.pt")
@@ -97,12 +101,12 @@ def main():
 
     if os.path.isfile(best_src):
         shutil.copy2(best_src, best_dst)
-        print(f"\n[train_signs] Model saved: {best_dst}")
+        log.info(f"Model saved: {best_dst}")
     else:
-        print(f"\n[train_signs] WARNING: best.pt not found at {best_src}")
-        print(f"             Look in {output}/runs/signs/weights/")
+        log.warning(f"best.pt not found at {best_src}")
+        log.warning(f"Look in {output}/runs/signs/weights/")
 
-    print("[train_signs] Training finished.")
+    log.info("Training finished.")
 
 
 if __name__ == "__main__":

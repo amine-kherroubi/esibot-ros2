@@ -14,7 +14,10 @@ import os
 import cv2
 import numpy as np
 
+from esibot_logging import get_logger
 from esibot_vision.config import SIGN_CLASSES, SIGN_COLORS, COLOR_WHITE
+
+log = get_logger(__name__)
 
 
 class SignDetector:
@@ -43,9 +46,7 @@ class SignDetector:
         if model_path and os.path.isfile(model_path):
             self._load_model(model_path)
         else:
-            import logging
-
-            logging.getLogger(__name__).warning(
+            log.warning(
                 f"[SignDetector] Model not found: {model_path} - detection disabled"
             )
 
