@@ -43,12 +43,15 @@ class SignDetector:
         # Currently confirmed classes
         self._confirmed: set[str] = set()
 
-        if model_path and os.path.isfile(model_path):
-            self._load_model(model_path)
+        if model_path:
+            if os.path.isfile(model_path):
+                self._load_model(model_path)
+            else:
+                log.warning(
+                    f"[SignDetector] Model not found: {model_path} - detection disabled"
+                )
         else:
-            log.warning(
-                f"[SignDetector] Model not found: {model_path} - detection disabled"
-            )
+            log.info("[SignDetector] No model path provided - detection disabled")
 
     # ─────────────────────────────────────────────────────────────────────
     def _load_model(self, path: str):

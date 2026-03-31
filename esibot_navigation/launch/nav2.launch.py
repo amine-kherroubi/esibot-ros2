@@ -14,7 +14,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -29,6 +29,10 @@ def generate_launch_description():
     default_map = os.path.join(pkg_share, "maps", "esibot_map.yaml")
     default_params = os.path.join(pkg_share, "config", "nav2_params.yaml")
     default_rviz = os.path.join(nav2_bringup_dir, "rviz", "nav2_default_view.rviz")
+    headless = not (
+        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    )
+    default_use_rviz = "false" if headless else "true"
 
     # Launch arguments
     map_arg = DeclareLaunchArgument(
@@ -68,7 +72,7 @@ def generate_launch_description():
     )
     use_rviz_arg = DeclareLaunchArgument(
         "use_rviz",
-        default_value="true",
+        default_value=default_use_rviz,
         description="Launch RViz2 with Nav2 config",
     )
     rviz_config_arg = DeclareLaunchArgument(
@@ -122,18 +126,28 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("use_rviz")),
     )
 
-    return LaunchDescription(
-        [
-            map_arg,
-            params_arg,
-            scan_topic_arg,
-            use_sim_time_arg,
-            autostart_arg,
-            use_composition_arg,
-            use_respawn_arg,
-            use_rviz_arg,
-            rviz_config_arg,
-            bringup,
-            rviz,
-        ]
-    )
+    actions = [
+        map_arg,
+        params_arg,
+        scan_topic_arg,
+        use_sim_time_arg,
+        autostart_arg,
+        use_composition_arg,
+        use_respawn_arg,
+        use_rviz_arg,
+        rviz_config_arg,
+    ]
+
+    if headless:
+        actions.append(
+            LogInfo(
+                msg=(
+                    "[nav2.launch.py] No DISPLAY/WAYLAND_DISPLAY detected — "
+                    "defaulting use_rviz:=false."
+                )
+            )
+        )
+
+    actions.extend([bringup, rviz])
+
+    return LaunchDescription(actions)

@@ -50,11 +50,16 @@ class ObstacleDetector:
         self._counters: dict[str, tuple[int, int, dict]] = {}
         self._confirmed: dict[str, dict] = {}
 
-        if model_path and os.path.isfile(model_path):
-            self._load_model(model_path)
+        if model_path:
+            if os.path.isfile(model_path):
+                self._load_model(model_path)
+            else:
+                log.warning(
+                    f"[ObstacleDetector] Model not found: {model_path} - detection disabled"
+                )
         else:
-            log.warning(
-                f"[ObstacleDetector] Model not found: {model_path} - detection disabled"
+            log.info(
+                "[ObstacleDetector] No model path provided - detection disabled"
             )
 
     # ─────────────────────────────────────────────────────────────────────
