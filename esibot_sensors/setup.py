@@ -17,8 +17,8 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="amira",
-    maintainer_email="amira@todo.todo",
+    maintainer="Amira Bouderbala",
+    maintainer_email="ma_bouderbala@esi.dz",
     description="EsiBot ultrasonic radar node — servo sweep + HC-SR04 LaserScan publisher",
     license="Apache-2.0",
     extras_require={

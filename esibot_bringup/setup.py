@@ -20,8 +20,8 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="EsiBot Team",
-    maintainer_email="team@esibot.local",
+    maintainer="Sarah Hasnaoui",
+    maintainer_email="ms_hasnaoui@esi.dz",
     description="EsiBot bringup - driver node for ESP32 motor + odometry bridge",
     license="Apache-2.0",
     extras_require={

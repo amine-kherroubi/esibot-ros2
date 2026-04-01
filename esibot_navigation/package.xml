@@ -7,7 +7,7 @@
     EsiBot Nav2 bringup and configuration package.
     Provides maps, parameters, and launch wiring.
   </description>
-  <maintainer email="mm_kherroubi@esi.dz">EsiBot Team</maintainer>
+  <maintainer email="mm_kherroubi@esi.dz">Mohamed El Amine Kherroubi</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

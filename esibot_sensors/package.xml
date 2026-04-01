@@ -4,7 +4,7 @@
   <name>esibot_sensors</name>
   <version>0.0.0</version>
   <description>Pseudo-LiDAR sweep node for EsiBot.</description>
-  <maintainer email="amira@todo.todo">amira</maintainer>
+  <maintainer email="ma_bouderbala@esi.dz">Amira Bouderbala</maintainer>
   <license>License</license>
   <depend>rclpy</depend>
   <depend>std_msgs</depend>

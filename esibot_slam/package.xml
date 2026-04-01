@@ -37,7 +37,7 @@
     Supports both Gazebo Harmonic simulation and real hardware on Raspberry Pi 4.
   </description>
 
-  <maintainer email="esibot@esi.dz">EsiBot Team (Task 3.5 — SLAM)</maintainer>
+  <maintainer email="mr_boukakiou@esi.dz">Rayan Boukakiou</maintainer>
   <license>Apache-2.0</license>
 
   <!-- ── Build tool ────────────────────────────────────────────────────── -->

@@ -3,7 +3,7 @@
   <name>esibot_logging</name>
   <version>0.0.1</version>
   <description>Shared logging utilities for EsiBot packages.</description>
-  <maintainer email="team@esibot.local">EsiBot Team</maintainer>
+  <maintainer email="mm_kherroubi@esi.dz">Mohamed El Amine Kherroubi</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>

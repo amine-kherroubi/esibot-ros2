@@ -12,8 +12,8 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="EsiBot Team",
-    maintainer_email="team@esibot.local",
+    maintainer="Mohamed El Amine Kherroubi",
+    maintainer_email="mm_kherroubi@esi.dz",
     description="Shared logging utilities for EsiBot packages.",
     license="Apache-2.0",
     extras_require={

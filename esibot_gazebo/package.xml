@@ -4,7 +4,7 @@
   <name>esibot_gazebo</name>
   <version>0.1.0</version>
   <description>EsiBot Gazebo simulation — world SDF, launch files, gz_bridge config.</description>
-  <maintainer email="mr_zitouni@esi.dz">EsiBot Team</maintainer>
+  <maintainer email="mr_zitouni@esi.dz">Rania Zitouni</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

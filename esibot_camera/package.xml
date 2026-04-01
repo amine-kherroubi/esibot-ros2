@@ -3,7 +3,7 @@
   <name>esibot_camera</name>
   <version>0.0.1</version>
   <description>ESP32-CAM video stream to ROS 2 (Jazzy).</description>
-  <maintainer email="idriss.ziadi47@gmail.com">ziadi</maintainer>
+  <maintainer email="mi_ziadi@esi.dz">Idriss Yacine Ziadi</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
