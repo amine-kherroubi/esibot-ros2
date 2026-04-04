@@ -62,10 +62,3 @@ Modifier `src/config.js` :
 | `BATTERY_CAPACITY_MINUTES` | `45` | Autonomie estimée (min) |
 | `SCAN_OVERLAY` | `false` | Afficher le scan LIDAR sur la carte |
 
----
-
-## Notes
-
-- `dist/` est généré par `npm run build` — **ne pas committer** (exclu via `.gitignore`)
-- `node_modules/` — **ne pas committer** (exclu via `.gitignore`)
-- Le build compilé `esibot_ui/web/` est également exclu du git
