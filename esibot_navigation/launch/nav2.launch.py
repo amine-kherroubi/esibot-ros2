@@ -17,7 +17,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
 
@@ -81,6 +81,12 @@ def generate_launch_description():
         description="Full path to RViz2 config",
     )
 
+    slam_mode_arg = DeclareLaunchArgument(
+        "slam_mode",
+        default_value="false",
+        description="true = slam_toolbox running, skip AMCL+map_server",
+    )
+
     # Rewrite YAML to allow scan topic overrides (keeps default 'scan' standard)
     configured_params = RewrittenYaml(
         source_file=LaunchConfiguration("params_file"),
@@ -106,7 +112,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "slam": "False",
-            "use_localization": "True",
+            "use_localization": PythonExpression(['"False" if "', LaunchConfiguration("slam_mode"), '" == "true" else "True"']),
             "map": LaunchConfiguration("map"),
             "use_sim_time": LaunchConfiguration("use_sim_time"),
             "params_file": configured_params,
@@ -136,6 +142,7 @@ def generate_launch_description():
         use_respawn_arg,
         use_rviz_arg,
         rviz_config_arg,
+        slam_mode_arg,
     ]
 
     if headless:

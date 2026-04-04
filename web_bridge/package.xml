@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>web_bridge</name>
+  <version>1.0.0</version>
+  <description>
+    Passerelle WebSocket ROS2 ↔ navigateur web pour EsiBot.
+    Basé sur rosbridge_suite — permet au dashboard de lire les topics
+    et d'envoyer des commandes via ws://robot-ip:9090.
+  </description>
+  <maintainer email="esibot@esi.dz">EsiBot Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rosbridge_server</depend>
+  <depend>rosbridge_msgs</depend>
+  <depend>rosapi</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

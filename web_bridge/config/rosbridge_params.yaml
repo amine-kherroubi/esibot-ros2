@@ -1,0 +1,23 @@
+/**:
+  ros__parameters:
+    # Port WebSocket — dashboard se connecte sur ws://robot-ip:9090
+    port: 9090
+
+    # Accepter connexions depuis n'importe quelle adresse (0.0.0.0)
+    address: '0.0.0.0'
+
+    # SSL désactivé (connexion locale réseau robot)
+    ssl: false
+
+    # Authentification désactivée
+    authenticate: false
+
+    # Performance — throttle messages lourds (image, map)
+    max_message_size: 10000000    # 10 MB max par message
+    send_action_goals_in_new_thread: true
+
+    # Topics images : réduire fréquence si réseau lent
+    # (le dashboard throttle lui-même via roslib throttle_rate)
+    fragment_timeout: 600
+    delay_between_messages: 0.0
+    max_burst_size: 0

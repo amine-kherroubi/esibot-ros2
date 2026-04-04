@@ -17,3 +17,7 @@ esibot_vision/runs/
 esibot_vision/dataset/
 esibot_vision/models/*.pt
 esibot_vision/models/runs/
+
+# Dashboard web — builds générés
+dashboard/dist/
+esibot_ui/web/

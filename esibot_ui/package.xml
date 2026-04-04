@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>esibot_ui</name>
+  <version>1.0.0</version>
+  <description>
+    Serveur web embarqué sur le Raspberry Pi pour EsiBot.
+    Affiche en temps réel : carte SLAM, flux caméra, angle servo, état robot.
+    Basé sur React + Vite (web_src/) servi par un nœud ROS2 Python (dashboard_node).
+  </description>
+  <maintainer email="esibot@esi.dz">EsiBot Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>web_bridge</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
