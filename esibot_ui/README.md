@@ -1,157 +1,157 @@
-# esibot_ui — Dashboard Web EsiBot
+# esibot_ui — EsiBot Web Dashboard
 
-Interface web temps réel pour le robot EsiBot, accessible depuis n'importe quel navigateur sur le réseau local.
+Real-time web interface for the EsiBot robot, accessible from any browser on the local network.
 
-**Fonctionnalités :**
-- Carte SLAM en temps réel (pan, zoom, recentrage)
-- Flux caméra (brut ou annoté par la vision)
-- Envoi de goal de navigation Nav2 (clic sur la carte)
-- Définition de pose initiale AMCL (clic sur la carte)
-- Sauvegarde de la carte SLAM
-- Téléopération clavier (WASD)
-- Affichage batterie, angle servo radar, scan LIDAR
+**Features:**
+- Real-time SLAM map (pan, zoom, re-center)
+- Camera feed (raw or annotated by vision)
+- Nav2 navigation goal (click on map)
+- AMCL initial pose definition (click on map)
+- SLAM map saving
+- Keyboard teleoperation (WASD)
+- Battery level, radar servo angle, LIDAR scan display
 
 ---
 
-## Panels de l'interface
+## Interface Panels
 
 ### Connection
-Gère la connexion WebSocket entre le navigateur et le robot.
+Manages the WebSocket connection between the browser and the robot.
 
-| Élément | Description |
+| Element | Description |
 |---------|-------------|
-| Champ URL | Adresse rosbridge — ex. `ws://192.168.1.34:9090` |
-| Bouton Connect/Disconnect | Ouvre/ferme la connexion WebSocket |
-| Latence | Temps aller-retour mesuré en ms |
+| URL field | Rosbridge address — e.g. `ws://192.168.1.34:9090` |
+| Connect/Disconnect button | Opens/closes the WebSocket connection |
+| Latency | Round-trip time measured in ms |
 
-**Source de données :** aucun topic ROS2 — connexion directe via `ROSLIB.Ros` au rosbridge WebSocket.
+**Data source:** no ROS2 topic — direct connection via `ROSLIB.Ros` to the rosbridge WebSocket.
 
 ---
 
 ### Map
-Affiche la carte SLAM construite par slam_toolbox, la position du robot, son chemin parcouru, le scan LIDAR et les goals/poses.
+Displays the SLAM map built by slam_toolbox, the robot position, its traveled path, LIDAR scan, and goals/poses.
 
-| Élément | Topic ROS2 | Description |
+| Element | ROS2 Topic | Description |
 |---------|-----------|-------------|
-| Carte (fond gris/blanc/noir) | `/map` (`nav_msgs/OccupancyGrid`) | Reçue une fois au démarrage puis à chaque mise à jour SLAM. Dessinée sur un canvas offscreen. |
-| Position du robot (triangle) | `/odom` (`nav_msgs/Odometry`) | Mise à jour en continu. Position `x, y` + cap `yaw` extraits du quaternion. |
-| Chemin parcouru (trait bleu) | `/odom` | Accumulé localement dans le navigateur (max 500 points, pas de 5 cm). |
-| Scan LIDAR (rayons rouges) | `/scan` (`sensor_msgs/LaserScan`) | Optionnel (`SCAN_OVERLAY=true` dans config.js). Projeté sur la carte selon la pose du robot. |
-| Goal de navigation (fanion) | Calculé au clic | Affiché après clic sur la carte en mode Goal. Coordonnées canvas → coordonnées monde. |
-| Pose initiale (croix verte) | Calculé au clic | Affiché après clic en mode Pose Initiale. |
+| Map (gray/white/black background) | `/map` (`nav_msgs/OccupancyGrid`) | Received once at startup then on each SLAM update. Drawn on an offscreen canvas. |
+| Robot position (circle) | `/odom` (`nav_msgs/Odometry`) | Continuously updated. Position `x, y` + heading `yaw` extracted from quaternion. |
+| Traveled path (blue line) | `/odom` | Accumulated locally in the browser (max 500 points, 5 cm step). |
+| LIDAR scan (red rays) | `/scan` (`sensor_msgs/LaserScan`) | Optional (`SCAN_OVERLAY=true` in config.js). Projected on the map based on robot pose. |
+| Navigation goal (flag) | Computed on click | Displayed after clicking on the map in Goal mode. Canvas coordinates → world coordinates. |
+| Initial pose (green cross) | Computed on click | Displayed after clicking in Initial Pose mode. |
 
-**Contrôles de la carte :**
-- **Molette** — zoom (0.2× à 20×)
-- **Clic + drag** — déplacer la vue (pan)
-- **⊙ Recentrer** — recentre le robot à l'écran
-- **⊕ Pose initiale** — clic sur la carte → publie sur `/initialpose` (AMCL)
-- **⚑ Envoyer un goal** — clic sur la carte → envoie le goal Nav2 via `nav_goal_proxy`
-- **💾 Save Map** — publie sur `/save_map` → `map_saver_node` sauvegarde la carte
+**Map controls:**
+- **Scroll wheel** — zoom (0.2× to 20×)
+- **Click + drag** — pan the view
+- **⊙ Re-center** — centers the robot on screen
+- **⊕ Initial pose** — click on map → publishes to `/initialpose` (AMCL)
+- **⚑ Send goal** — click on map → sends Nav2 goal via `nav_goal_proxy`
+- **💾 Save Map** — publishes to `/save_map` → `map_saver_node` saves the map
 
 ---
 
 ### Camera
-Affiche le flux vidéo de la caméra ESP32 du robot.
+Displays the video feed from the robot's ESP32 camera.
 
-| Mode | Topic ROS2 | Description |
+| Mode | ROS2 Topic | Description |
 |------|-----------|-------------|
-| Annotated | `/camera/image_annotated` (`sensor_msgs/Image`) | Image avec les détections de `esibot_vision` superposées (boîtes, labels). |
-| Raw | `/camera/compressed` (`sensor_msgs/CompressedImage`) | Image JPEG brute, sans traitement. |
+| Annotated | `/camera/image_annotated` (`sensor_msgs/Image`) | Image with `esibot_vision` detections overlaid (boxes, labels). |
+| Raw | `/camera/compressed` (`sensor_msgs/CompressedImage`) | Raw JPEG image, no processing. |
 
-**Source de données :** images reçues via rosbridge, converties en base64 et affichées dans une balise `<img>`. Throttle automatique selon la bande passante réseau.
+**Data source:** images received via rosbridge, converted to base64 and displayed in an `<img>` tag. Automatic throttle based on network bandwidth.
 
 ---
 
 ### Teleop
-Permet de contrôler le robot manuellement au clavier.
+Allows manual keyboard control of the robot.
 
-| Touche | Action |
-|--------|--------|
-| `W` / `↑` | Avancer |
-| `S` / `↓` | Reculer |
-| `A` / `←` | Tourner à gauche |
-| `D` / `→` | Tourner à droite |
+| Key | Action |
+|-----|--------|
+| `W` / `↑` | Move forward |
+| `S` / `↓` | Move backward |
+| `A` / `←` | Turn left |
+| `D` / `→` | Turn right |
 
-**Source de données :** aucun topic en entrée. Publie sur `/cmd_vel` (`geometry_msgs/Twist`) à 10 Hz tant qu'une touche est maintenue. Arrêt automatique 200 ms après le relâchement de la touche.
+**Data source:** no input topic. Publishes to `/cmd_vel` (`geometry_msgs/Twist`) at 10 Hz while a key is held. Auto-stop 200 ms after key release.
 
-Vitesses configurables dans `config.js` : `CMD_VEL.LINEAR_SPEED` (défaut 0.4 m/s), `CMD_VEL.ANGULAR_SPEED` (défaut 1.5 rad/s).
+Configurable speeds in `config.js`: `CMD_VEL.LINEAR_SPEED` (default 0.4 m/s), `CMD_VEL.ANGULAR_SPEED` (default 1.5 rad/s).
 
 ---
 
 ### Battery
-Affiche le niveau de batterie du robot sous forme de barre graphique.
+Displays the robot battery level as a graphical bar.
 
-| Élément | Description |
+| Element | Description |
 |---------|-------------|
-| Icône batterie | Couleur verte > 50%, orange > 20%, rouge ≤ 20% |
-| Pourcentage | Affiché en valeur numérique |
-| Temps restant estimé | Calculé depuis `BATTERY_CAPACITY_MINUTES` dans config.js |
+| Battery icon | Green > 50%, orange > 20%, red ≤ 20% |
+| Percentage | Displayed as numeric value |
+| Estimated remaining time | Calculated from `BATTERY_CAPACITY_MINUTES` in config.js |
 
-**Source de données :** `/battery_state` (`sensor_msgs/BatteryState`). Champ `percentage` utilisé (valeur 0.0–1.0).
+**Data source:** `/battery_state` (`sensor_msgs/BatteryState`). Uses `percentage` field (value 0.0–1.0).
 
 ---
 
 ### Servo Gauge
-Affiche l'angle actuel du servo-moteur qui oriente le radar ultrasonique.
+Displays the current angle of the servo motor that orients the ultrasonic radar.
 
-| Élément | Description |
+| Element | Description |
 |---------|-------------|
-| Jauge semi-circulaire | Arc de 240° représentant 0°–180° |
-| Valeur numérique | Angle en degrés affiché au centre |
+| Semi-circular gauge | 240° arc representing 0°–180° |
+| Numeric value | Angle in degrees displayed at center |
 
-**Source de données :** `/esibot/servo_angle` (`std_msgs/Float32`). Valeur en degrés entre 0 et 180.
+**Data source:** `/esibot/servo_angle` (`std_msgs/Float32`). Value in degrees between 0 and 180.
 
 ---
 
 ## Architecture
 
 ```
-Robot (container Docker)
-├── bringup          →  driver moteurs, odométrie, /cmd_vel, /odom, /tf
-├── slam             →  carte SLAM (/map, TF map→odom)
+Robot (Docker container)
+├── bringup          →  motor driver, odometry, /cmd_vel, /odom, /tf
+├── slam             →  SLAM map (/map, TF map→odom)
 ├── sensors          →  radar (/scan, /esibot/servo_angle)
-├── camera           →  flux image (/camera/compressed, /camera/image_annotated)
-├── vision           →  détection objets (annote /camera/image_annotated)
-├── nav2             →  navigation autonome (/navigate_to_pose)
+├── camera           →  image feed (/camera/compressed, /camera/image_annotated)
+├── vision           →  object detection (annotates /camera/image_annotated)
+├── nav2             →  autonomous navigation (/navigate_to_pose)
 │
-├── dashboard_node   →  http://robot-ip:8080   (sert les fichiers web statiques)
-├── web_bridge       →  ws://robot-ip:9090     (rosbridge : ROS2 ↔ navigateur WebSocket)
-├── nav_goal_proxy   →  reçoit /nav_goal (topic) → envoie action NavigateToPose
-└── map_saver_node   →  reçoit /save_map (topic) → lance map_saver_cli
+├── dashboard_node   →  http://robot-ip:8080   (serves static web files)
+├── web_bridge       →  ws://robot-ip:9090     (rosbridge: ROS2 ↔ browser WebSocket)
+├── nav_goal_proxy   →  receives /nav_goal (topic) → sends NavigateToPose action
+└── map_saver_node   →  receives /save_map (topic) → runs map_saver_cli
 
-Navigateur (PC / téléphone)
-└── ouvre http://robot-ip:8080 → se connecte automatiquement à ws://robot-ip:9090
+Browser (PC / phone)
+└── opens http://robot-ip:8080 → automatically connects to ws://robot-ip:9090
 ```
 
-### Pourquoi un nav_goal_proxy ?
+### Why a nav_goal_proxy?
 
-Le dashboard web ne peut pas appeler directement une action ROS2 (protocole trop complexe pour rosbridge dans ce contexte). Le proxy fait le pont :
+The web dashboard cannot directly call a ROS2 action (protocol too complex for rosbridge in this context). The proxy bridges the gap:
 
 ```
-Dashboard JS  →  publie PoseStamped sur /nav_goal  →  nav_goal_proxy  →  action NavigateToPose  →  bt_navigator
-                                                                       ↓
-Dashboard JS  ←  subscribe /nav_goal_status (String) ←─────────────────
+Dashboard JS  →  publishes PoseStamped on /nav_goal  →  nav_goal_proxy  →  NavigateToPose action  →  bt_navigator
+                                                                        ↓
+Dashboard JS  ←  subscribes /nav_goal_status (String) ←────────────────
                  (sending | navigating | reached | error)
 ```
 
-### Pourquoi le relay cmd_vel ?
+### Why the cmd_vel relay?
 
-Nav2 publie sur `/cmd_vel_nav` → `velocity_smoother` lisse et publie sur `/cmd_vel_smoothed`.
-Mais le driver du robot écoute `/cmd_vel`. Un relay fait le pont :
+Nav2 publishes on `/cmd_vel_nav` → `velocity_smoother` smooths and publishes on `/cmd_vel_smoothed`.
+But the robot driver listens on `/cmd_vel`. A relay bridges the gap:
 
 ```
 velocity_smoother (/cmd_vel_smoothed)  →  relay  →  /cmd_vel  →  esibot_driver
 ```
 
-Ce relay doit être lancé manuellement (voir section Lancement).
+This relay must be launched manually (see Launch section).
 
 ---
 
-## Installation (une seule fois)
+## Installation (once)
 
-### 1. Compiler le dashboard React
+### 1. Build the React dashboard
 
-Le code source React se trouve dans `dashboard/` à la racine du workspace.
+The React source code is located in `dashboard/` at the workspace root.
 
 ```bash
 cd ~/esibot_ws/src/dashboard
@@ -160,7 +160,7 @@ npm run build
 cp -r dist/ ../esibot_ui/web/
 ```
 
-### 2. Compiler les packages ROS2
+### 2. Build ROS2 packages
 
 ```bash
 cd ~/esibot_ws
@@ -168,34 +168,34 @@ colcon build --packages-select web_bridge esibot_ui
 source install/setup.bash
 ```
 
-> **Important :** après chaque modification de `nav_goal_proxy.py`, `map_saver_node.py` ou `dashboard_node.py`, relancer `colcon build --packages-select esibot_ui` sans `--symlink-install` pour que les métadonnées du package soient correctement installées.
+> **Important:** after any modification to `nav_goal_proxy.py`, `map_saver_node.py` or `dashboard_node.py`, run `colcon build --packages-select esibot_ui` without `--symlink-install` to ensure package metadata is correctly installed.
 
 ---
 
-## Lancement complet (ordre à respecter)
+## Full Launch (order matters)
 
-### Étape 1 — Lancer les packages robot
+### Step 1 — Launch robot packages
 
-**Hardware réel :**
+**Real hardware:**
 
 ```bash
-# Terminal 1 — driver + odométrie
+# Terminal 1 — driver + odometry
 ros2 launch esibot_bringup bringup.launch.py
 
-# Terminal 2 — capteur radar
+# Terminal 2 — radar sensor
 ros2 launch esibot_sensors radar.launch.py
 
 # Terminal 3 — SLAM
 ros2 launch esibot_slam slam.launch.py mode:=hw
 
-# Terminal 4 — caméra
+# Terminal 4 — camera
 ros2 launch esibot_camera camera.launch.py esp32_ip:=192.168.1.80
 
-# Terminal 5 — vision (optionnel — lourd en CPU)
+# Terminal 5 — vision (optional — CPU intensive)
 ros2 launch esibot_vision vision.launch.py
 ```
 
-**Simulation (sans hardware) :**
+**Simulation (no hardware):**
 
 ```bash
 ros2 launch esibot_bringup bringup.launch.py sim_mode:=true
@@ -205,100 +205,100 @@ ros2 launch esibot_camera  camera.launch.py  sim_mode:=true
 ros2 launch esibot_vision  vision.launch.py
 ```
 
-### Étape 2 — Lancer Nav2 (navigation autonome)
+### Step 2 — Launch Nav2 (autonomous navigation)
 
-**Mode SLAM actif (carte construite en direct) :**
+**Active SLAM mode (map built in real-time):**
 
 ```bash
 ros2 launch esibot_navigation nav2.launch.py use_rviz:=false slam_mode:=true
 ```
 
-**Mode carte pré-construite (AMCL + localisation) :**
+**Pre-built map mode (AMCL + localization):**
 
 ```bash
 ros2 launch esibot_navigation nav2.launch.py use_rviz:=false
 ```
 
-> Attendre le message `Managed nodes are active` avant de continuer.
+> Wait for `Managed nodes are active` message before continuing.
 
-### Étape 3 — Lancer le relay cmd_vel
+### Step 3 — Launch cmd_vel relay
 
-Sans ce relay, le robot ne bouge pas physiquement lors d'une navigation Nav2.
+Without this relay, the robot will not move physically during Nav2 navigation.
 
 ```bash
 ros2 run topic_tools relay /cmd_vel_smoothed /cmd_vel
 ```
 
-### Étape 4 — Lancer le dashboard
+### Step 4 — Launch dashboard
 
 ```bash
 ros2 launch esibot_ui dashboard.launch.py
 ```
 
-Lance automatiquement :
-- `dashboard_node` (serveur HTTP port 8080)
+Automatically launches:
+- `dashboard_node` (HTTP server port 8080)
 - `rosbridge_websocket` (WebSocket port 9090)
-- `nav_goal_proxy` (proxy action NavigateToPose)
-- `map_saver_node` (sauvegarde carte)
+- `nav_goal_proxy` (NavigateToPose action proxy)
+- `map_saver_node` (map saving)
 
-### Étape 5 — Ouvrir dans le navigateur
+### Step 5 — Open in browser
 
 ```
-http://<ip-du-robot>:8080
+http://<robot-ip>:8080
 ```
 
 ---
 
-## Problèmes connus et solutions
+## Known Issues and Solutions
 
-### Nav2 échoue à démarrer — "Failed to change state for node: controller_server"
+### Nav2 fails to start — "Failed to change state for node: controller_server"
 
-**Cause :** plusieurs instances Nav2 tournent simultanément (participants DDS fantômes après un kill).
+**Cause:** multiple Nav2 instances running simultaneously (DDS ghost participants after kill).
 
-**Solution :**
+**Solution:**
 ```bash
-# 1. Killer tous les processus nav2
+# 1. Kill all nav2 processes
 kill -9 $(ps aux | grep -E 'controller_server|bt_navigator|lifecycle_manager|planner_server|smoother_server|behavior_server|velocity_smoother|collision_monitor|waypoint_follower|opennav_docking' | grep -v grep | awk '{print $2}') 2>/dev/null
 
-# 2. Attendre 30 secondes (nettoyage DDS obligatoire)
+# 2. Wait 30 seconds (mandatory DDS cleanup)
 sleep 30
 
-# 3. Stopper le daemon ROS2
+# 3. Stop ROS2 daemon
 ros2 daemon stop
 
-# 4. Relancer Nav2
+# 4. Relaunch Nav2
 ros2 launch esibot_navigation nav2.launch.py use_rviz:=false slam_mode:=true
 ```
 
-### Le robot ne bouge pas physiquement lors d'une navigation
+### Robot does not move physically during navigation
 
-**Cause :** le relay `/cmd_vel_smoothed → /cmd_vel` n'est pas lancé.
+**Cause:** the `/cmd_vel_smoothed → /cmd_vel` relay is not running.
 
-**Solution :** lancer le relay (Étape 3 ci-dessus).
+**Solution:** launch the relay (Step 3 above).
 
-**Vérification :**
+**Verification:**
 ```bash
-ros2 topic hz /cmd_vel   # doit afficher une fréquence pendant la navigation
+ros2 topic hz /cmd_vel   # should show a frequency during navigation
 ```
 
-### Le dashboard reste sur "Envoi…" après envoi d'un goal
+### Dashboard stays on "Sending…" after sending a goal
 
-**Cause A :** Nav2 n'est pas lancé ou pas encore actif.
-**Solution :** attendre `Managed nodes are active` dans les logs Nav2.
+**Cause A:** Nav2 is not launched or not yet active.
+**Solution:** wait for `Managed nodes are active` in Nav2 logs.
 
-**Cause B :** conflit DDS — `nav_goal_proxy` tourne en double instance.
-**Solution :** killer tous les processus nav_goal_proxy et relancer uniquement le dashboard.
+**Cause B:** DDS conflict — `nav_goal_proxy` running as duplicate instance.
+**Solution:** kill all nav_goal_proxy processes and relaunch only the dashboard.
 
-### Erreur TF "Lookup would require extrapolation into the future"
+### TF error "Lookup would require extrapolation into the future"
 
-**Cause :** SLAM toolbox ou MPPI trop chargé en CPU, écart de ~50ms dans le TF.
+**Cause:** SLAM toolbox or MPPI overloaded on CPU, ~50ms gap in TF.
 
-**Solution :** réduire la charge CPU — stopper `esibot_vision` si inutile (consomme >500% CPU).
+**Solution:** reduce CPU load — stop `esibot_vision` if not needed (consumes >500% CPU).
 ```bash
 kill -9 $(pgrep -f vision_node)
 ```
 
-Les paramètres MPPI dans `esibot_navigation/config/nav2_params.yaml` sont déjà optimisés :
+MPPI parameters in `esibot_navigation/config/nav2_params.yaml` are already optimized:
 ```yaml
 controller_frequency: 10.0
 model_dt:             0.1
@@ -308,27 +308,27 @@ time_steps:           30
 
 ---
 
-## Modifier le dashboard (React)
+## Modifying the Dashboard (React)
 
-Le code source React est dans `dashboard/` à la racine du workspace (pas dans ce package).
+React source code is in `dashboard/` at the workspace root (not in this package).
 
-Si tu modifies un fichier dans `dashboard/src/` :
+After modifying a file in `dashboard/src/`:
 
 ```bash
-# 1. Supprimer l'ancien build
+# 1. Remove old build
 rm -rf ~/esibot_ws/src/esibot_ui/web/
 
-# 2. Recompiler React
+# 2. Rebuild React
 cd ~/esibot_ws/src/dashboard
 npm run build
 cp -r dist/ ../esibot_ui/web/
 
-# 3. Rebuilder le package ROS2
+# 3. Rebuild ROS2 package
 cd ~/esibot_ws
 colcon build --packages-select esibot_ui
 source install/setup.bash
 
-# 4. Relancer
+# 4. Restart
 ros2 launch esibot_ui dashboard.launch.py
 ```
 
@@ -336,77 +336,77 @@ ros2 launch esibot_ui dashboard.launch.py
 
 ## Configuration
 
-Fichier : `dashboard/src/config.js`
+File: `dashboard/src/config.js`
 
-| Paramètre | Défaut | Description |
-|-----------|--------|-------------|
-| `ROSBRIDGE_URL` | `ws://localhost:9090` | IP du robot |
-| `ROBOT_NAME` | `EsiBot` | Nom affiché dans l'interface |
-| `CMD_VEL.LINEAR_SPEED` | `0.4` | Vitesse linéaire téléop (m/s) |
-| `CMD_VEL.ANGULAR_SPEED` | `1.5` | Vitesse angulaire téléop (rad/s) |
-| `BATTERY_CAPACITY_MINUTES` | `45` | Autonomie estimée (min) |
-| `SCAN_OVERLAY` | `false` | Afficher le scan LIDAR sur la carte |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ROSBRIDGE_URL` | `ws://localhost:9090` | Robot IP address |
+| `ROBOT_NAME` | `EsiBot` | Name displayed in the interface |
+| `CMD_VEL.LINEAR_SPEED` | `0.4` | Teleop linear speed (m/s) |
+| `CMD_VEL.ANGULAR_SPEED` | `1.5` | Teleop angular speed (rad/s) |
+| `BATTERY_CAPACITY_MINUTES` | `45` | Estimated battery life (min) |
+| `SCAN_OVERLAY` | `false` | Display LIDAR scan on map |
 
 ---
 
-## Topics ROS2
+## ROS2 Topics
 
 | Topic | Direction | Type | Description |
 |-------|-----------|------|-------------|
-| `/map` | ← robot | `nav_msgs/OccupancyGrid` | Carte SLAM |
-| `/odom` | ← robot | `nav_msgs/Odometry` | Position et vitesse robot |
-| `/scan` | ← robot | `sensor_msgs/LaserScan` | Scan LIDAR radar |
-| `/camera/compressed` | ← robot | `sensor_msgs/CompressedImage` | Flux caméra brut |
-| `/camera/image_annotated` | ← robot | `sensor_msgs/Image` | Caméra avec détections vision |
-| `/battery_state` | ← robot | `sensor_msgs/BatteryState` | Niveau batterie |
-| `/esibot/servo_angle` | ← robot | `std_msgs/Float32` | Angle servo radar |
-| `/nav_goal_status` | ← robot | `std_msgs/String` | État navigation (sending/navigating/reached/error) |
-| `/save_map_status` | ← robot | `std_msgs/String` | État sauvegarde carte |
-| `/cmd_vel` | → robot | `geometry_msgs/Twist` | Commandes vitesse téléop |
-| `/nav_goal` | → robot | `geometry_msgs/PoseStamped` | Goal de navigation (via nav_goal_proxy) |
-| `/initialpose` | → robot | `geometry_msgs/PoseWithCovarianceStamped` | Pose initiale AMCL |
-| `/save_map` | → robot | `std_msgs/Empty` | Déclenche la sauvegarde de la carte |
+| `/map` | ← robot | `nav_msgs/OccupancyGrid` | SLAM map |
+| `/odom` | ← robot | `nav_msgs/Odometry` | Robot position and speed |
+| `/scan` | ← robot | `sensor_msgs/LaserScan` | Radar LIDAR scan |
+| `/camera/compressed` | ← robot | `sensor_msgs/CompressedImage` | Raw camera feed |
+| `/camera/image_annotated` | ← robot | `sensor_msgs/Image` | Camera with vision detections |
+| `/battery_state` | ← robot | `sensor_msgs/BatteryState` | Battery level |
+| `/esibot/servo_angle` | ← robot | `std_msgs/Float32` | Radar servo angle |
+| `/nav_goal_status` | ← robot | `std_msgs/String` | Navigation status (sending/navigating/reached/error) |
+| `/save_map_status` | ← robot | `std_msgs/String` | Map save status |
+| `/cmd_vel` | → robot | `geometry_msgs/Twist` | Teleop velocity commands |
+| `/nav_goal` | → robot | `geometry_msgs/PoseStamped` | Navigation goal (via nav_goal_proxy) |
+| `/initialpose` | → robot | `geometry_msgs/PoseWithCovarianceStamped` | AMCL initial pose |
+| `/save_map` | → robot | `std_msgs/Empty` | Triggers map saving |
 
 ---
 
-## Noeuds lancés par dashboard.launch.py
+## Nodes launched by dashboard.launch.py
 
-| Noeud | Package | Description |
-|-------|---------|-------------|
-| `dashboard_node` | `esibot_ui` | Serveur HTTP Python (port 8080), sert les fichiers web statiques |
-| `rosbridge_websocket` | `rosbridge_server` | Pont WebSocket ROS2 ↔ navigateur (port 9090) |
-| `nav_goal_proxy` | `esibot_ui` | Reçoit `/nav_goal`, appelle l'action `/navigate_to_pose`, publie statut sur `/nav_goal_status` |
-| `map_saver_node` | `esibot_ui` | Reçoit `/save_map`, exécute `map_saver_cli`, publie statut sur `/save_map_status` |
+| Node | Package | Description |
+|------|---------|-------------|
+| `dashboard_node` | `esibot_ui` | Python HTTP server (port 8080), serves static web files |
+| `rosbridge_websocket` | `rosbridge_server` | WebSocket bridge ROS2 ↔ browser (port 9090) |
+| `nav_goal_proxy` | `esibot_ui` | Receives `/nav_goal`, calls `/navigate_to_pose` action, publishes status on `/nav_goal_status` |
+| `map_saver_node` | `esibot_ui` | Receives `/save_map`, runs `map_saver_cli`, publishes status on `/save_map_status` |
 
 ---
 
-## Commandes de diagnostic rapide
+## Quick Diagnostic Commands
 
 ```bash
-# Vérifier que tous les topics arrivent
+# Check all topics are arriving
 ros2 topic list | grep -E 'map|odom|scan|cmd_vel|camera|battery'
 
-# Vérifier la fréquence du scan
+# Check scan frequency
 ros2 topic hz /scan
 
-# Vérifier que le robot reçoit les commandes vitesse
+# Check robot receives velocity commands
 ros2 topic hz /cmd_vel
 
-# Vérifier la chaîne cmd_vel Nav2
+# Check Nav2 cmd_vel chain
 ros2 topic hz /cmd_vel_nav       # controller_server → smoother
 ros2 topic hz /cmd_vel_smoothed  # smoother → relay
 ros2 topic hz /cmd_vel           # relay → driver
 
-# Tester un goal Nav2 depuis le terminal
+# Test a Nav2 goal from terminal
 ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
   "{pose: {header: {frame_id: 'map'}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}"
 
-# Vérifier l'état du lifecycle Nav2
+# Check Nav2 lifecycle state
 ros2 lifecycle list
 
-# Voir les TF disponibles
+# View available TFs
 ros2 run tf2_tools view_frames
 
-# Vérifier les noeuds actifs
+# Check active nodes
 ros2 node list
 ```

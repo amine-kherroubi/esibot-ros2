@@ -1,8 +1,8 @@
-# dashboard — Code source React du Dashboard EsiBot
+# dashboard — EsiBot Dashboard React Source
 
-Interface web temps réel pour le robot EsiBot (carte SLAM, caméra, téléopération, navigation Nav2).
+Real-time web interface for the EsiBot robot (SLAM map, camera, teleoperation, Nav2 navigation).
 
-Ce dossier contient uniquement le **code source** React. Le build compilé est généré dans `esibot_ui/web/` et servi par `dashboard_node` (package ROS2 `esibot_ui`).
+This folder contains only the React **source code**. The compiled build is generated in `esibot_ui/web/` and served by `dashboard_node` (ROS2 package `esibot_ui`).
 
 ---
 
@@ -11,39 +11,39 @@ Ce dossier contient uniquement le **code source** React. Le build compilé est g
 ```
 dashboard/
 ├── src/
-│   ├── components/     — Composants React (MapCanvas, Teleop, Camera…)
-│   ├── hooks/          — Hooks ROS2 (useMap, useOdom, useScan…)
-│   ├── context/        — Contexte rosbridge (connexion WebSocket)
-│   ├── utils/          — Utilitaires (mapUtils: worldToCanvas, canvasToWorld…)
-│   ├── styles/         — CSS global
-│   └── config.js       — Configuration (URL rosbridge, vitesses, etc.)
+│   ├── components/     — React components (MapCanvas, Teleop, Camera…)
+│   ├── hooks/          — ROS2 hooks (useMap, useOdom, useScan…)
+│   ├── context/        — Rosbridge context (WebSocket connection)
+│   ├── utils/          — Utilities (mapUtils: worldToCanvas, canvasToWorld…)
+│   ├── styles/         — Global CSS
+│   └── config.js       — Configuration (rosbridge URL, speeds, etc.)
 ├── package.json
 └── vite.config.js
 ```
 
 ---
 
-## Compiler et déployer
+## Build and Deploy
 
-Après chaque modification du code source :
+After modifying the source code:
 
 ```bash
-# 1. Supprimer l'ancien build
+# 1. Remove old build
 rm -rf ~/esibot_ws/src/esibot_ui/web/
 
-# 2. Compiler
+# 2. Build
 cd ~/esibot_ws/src/dashboard
 npm run build
 
-# 3. Copier le build vers le package ROS2
+# 3. Copy build to ROS2 package
 cp -r dist/ ../esibot_ui/web/
 
-# 4. Rebuilder le package ROS2
+# 4. Rebuild ROS2 package
 cd ~/esibot_ws
 colcon build --packages-select esibot_ui
 source install/setup.bash
 
-# 5. Relancer le dashboard
+# 5. Restart dashboard
 ros2 launch esibot_ui dashboard.launch.py
 ```
 
@@ -51,14 +51,13 @@ ros2 launch esibot_ui dashboard.launch.py
 
 ## Configuration
 
-Modifier `src/config.js` :
+Edit `src/config.js`:
 
-| Paramètre | Défaut | Description |
-|-----------|--------|-------------|
-| `ROSBRIDGE_URL` | `ws://localhost:9090` | Adresse IP du robot |
-| `ROBOT_NAME` | `EsiBot` | Nom affiché dans l'interface |
-| `CMD_VEL.LINEAR_SPEED` | `0.4` | Vitesse linéaire téléop (m/s) |
-| `CMD_VEL.ANGULAR_SPEED` | `1.5` | Vitesse angulaire téléop (rad/s) |
-| `BATTERY_CAPACITY_MINUTES` | `45` | Autonomie estimée (min) |
-| `SCAN_OVERLAY` | `false` | Afficher le scan LIDAR sur la carte |
-
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `ROSBRIDGE_URL` | `ws://localhost:9090` | Robot IP address |
+| `ROBOT_NAME` | `EsiBot` | Name displayed in the interface |
+| `CMD_VEL.LINEAR_SPEED` | `0.4` | Teleop linear speed (m/s) |
+| `CMD_VEL.ANGULAR_SPEED` | `1.5` | Teleop angular speed (rad/s) |
+| `BATTERY_CAPACITY_MINUTES` | `45` | Estimated battery life (min) |
+| `SCAN_OVERLAY` | `false` | Display LIDAR scan overlay on map |
