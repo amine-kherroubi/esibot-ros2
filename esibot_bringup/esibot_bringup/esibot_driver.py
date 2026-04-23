@@ -1,439 +1,309 @@
 #!/usr/bin/env python3
-"""EsiBot driver node.
+"""
+esibot_driver.py  —  OPEN-LOOP VERSION (no encoders)
+=====================================================
+Adapted for the actual EsiBot wiring:
+  - No encoders → odometry estimated from commands sent (open-loop)
+  - ENA/ENB hardwired to 5V → direction control via IN1-IN4 only
+  - UART via GPIO pins (Pi Pin8/Pin10) → /dev/ttyAMA0
 
-Bridges an ESP32 motor/encoder controller to ROS 2:
-- Subscribes to cmd_vel
-- Publishes odom and battery_state
-- Broadcasts TF (odom -> base_frame)
+How open-loop odometry works:
+  The Pi knows exactly what CMD it sent and at what time.
+  linear_velocity  ≈ sign(v) × LINEAR_SPEED_MPS   (when moving)
+  angular_velocity ≈ sign(ω) × ANGULAR_SPEED_RPS  (when turning)
+  Calibrate these two constants once with a tape measure.
 
+UART protocol:
+  RPi → ESP32 :  "CMD:<v_right>,<v_left>\\n"   e.g. "CMD:0.300,-0.280\\n"
+  ESP32 → RPi :  "BAT:<voltage>\\n"             e.g. "BAT:11.2\\n"
+
+Topics:
+  Publishes  -> /odom            (nav_msgs/Odometry)
+  Publishes  -> /tf              (geometry_msgs/TransformStamped)
+  Publishes  -> /battery_state   (sensor_msgs/BatteryState)
+  Subscribes -> /cmd_vel         (geometry_msgs/Twist)
 """
 
 import math
-from typing import Tuple
-
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from geometry_msgs.msg import TransformStamped, Twist, Quaternion
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Twist, TransformStamped, Quaternion
 from sensor_msgs.msg import BatteryState
 from tf2_ros import TransformBroadcaster
 
-from esibot_logging import get_logger, setup_logging
 
-DEFAULT_WHEEL_BASE = 0.16
-DEFAULT_WHEEL_RADIUS = 0.033
-DEFAULT_TICKS_PER_REV = 330
-DEFAULT_PUBLISH_RATE = 20.0
-DEFAULT_BAUD_RATE = 115200
-DEFAULT_SERIAL_TIMEOUT = 0.03  # must be < publish period (1/20Hz = 0.05s)
-DEFAULT_BATTERY_VOLTAGE = 12.0
-DEFAULT_CMD_VEL_TIMEOUT = 0.5
-DEFAULT_RECONNECT_INTERVAL = 2.0
+# ─────────────────────────────────────────────────────────
+#  ROBOT PHYSICAL PARAMETERS  — calibrate empirically
+# ─────────────────────────────────────────────────────────
 
-# Velocity clamp limits — adjust to match your motor/wheel specs.
-# Linear:  ±0.3 m/s  (conservative for a small differential-drive robot)
-# Angular: ±2.0 rad/s
-MAX_LINEAR_VEL = 0.3  # m/s
-MAX_ANGULAR_VEL = 2.0  # rad/s
+WHEEL_BASE = 0.16       # TODO(calibrate): distance between wheels (meters)
+                        # Measure with a ruler on the assembled robot
+
+# Effective real-world speed when a full-magnitude command is sent.
+# How to calibrate:
+#   LINEAR  → send CMD forward for 2s, measure distance → value = dist / 2.0
+#   ANGULAR → send CMD spin for 2s, measure angle (rad) → value = angle / 2.0
+LINEAR_SPEED_MPS  = 0.20   # TODO(calibrate): m/s at full forward command
+ANGULAR_SPEED_RPS = 1.0    # TODO(calibrate): rad/s at full rotation command
+
+# Dead zone: commands smaller than this are treated as zero
+DEAD_ZONE = 0.01
 
 
 class EsibotDriver(Node):
-    def __init__(self) -> None:
-        super().__init__("esibot_driver")
-        self.log = get_logger(node=self)
 
-        # Parameters
-        self.declare_parameter("serial_port", "/dev/ttyUSB0")
-        self.declare_parameter("baud_rate", DEFAULT_BAUD_RATE)
-        self.declare_parameter("serial_timeout", DEFAULT_SERIAL_TIMEOUT)
-        self.declare_parameter("publish_rate", DEFAULT_PUBLISH_RATE)
-        self.declare_parameter("wheel_base", DEFAULT_WHEEL_BASE)
-        self.declare_parameter("wheel_radius", DEFAULT_WHEEL_RADIUS)
-        self.declare_parameter("encoder_ticks_per_rev", DEFAULT_TICKS_PER_REV)
-        self.declare_parameter("odom_frame", "odom")
-        self.declare_parameter("base_frame", "base_footprint")
-        self.declare_parameter("odom_topic", "odom")
-        self.declare_parameter("cmd_vel_topic", "cmd_vel")
-        self.declare_parameter("battery_topic", "battery_state")
-        self.declare_parameter("publish_tf", True)
-        self.declare_parameter("cmd_vel_timeout", DEFAULT_CMD_VEL_TIMEOUT)
-        self.declare_parameter("reconnect_on_error", True)
-        self.declare_parameter("reconnect_interval", DEFAULT_RECONNECT_INTERVAL)
-        self.declare_parameter("sim_mode", False)
+    def __init__(self):
+        super().__init__('esibot_driver')
 
-        self._serial_port = self.get_parameter("serial_port").value
-        self._baud_rate = int(self.get_parameter("baud_rate").value)
-        self._serial_timeout = float(self.get_parameter("serial_timeout").value)
-        self._publish_rate = float(self.get_parameter("publish_rate").value)
-        self._wheel_base = float(self.get_parameter("wheel_base").value)
-        self._wheel_radius = float(self.get_parameter("wheel_radius").value)
-        self._ticks_per_rev = int(self.get_parameter("encoder_ticks_per_rev").value)
-        self._odom_frame = self.get_parameter("odom_frame").value
-        self._base_frame = self.get_parameter("base_frame").value
-        self._odom_topic = self.get_parameter("odom_topic").value
-        self._cmd_vel_topic = self.get_parameter("cmd_vel_topic").value
-        self._battery_topic = self.get_parameter("battery_topic").value
-        self._publish_tf_enabled = bool(self.get_parameter("publish_tf").value)
-        self._cmd_vel_timeout = float(self.get_parameter("cmd_vel_timeout").value)
-        self._reconnect_on_error = bool(self.get_parameter("reconnect_on_error").value)
-        self._reconnect_interval = float(self.get_parameter("reconnect_interval").value)
-        self._sim_mode = bool(self.get_parameter("sim_mode").value)
+        # ── ROS2 parameters ───────────────────────────────────────────────────
+        # serial_port changed to /dev/ttyAMA0 (Pi GPIO UART, Pin8/Pin10)
+        self.declare_parameter('serial_port',  '/dev/ttyAMA0')
+        self.declare_parameter('baud_rate',    115200)
+        self.declare_parameter('odom_frame',   'odom')
+        self.declare_parameter('base_frame',   'base_footprint')
+        self.declare_parameter('publish_rate', 20.0)
 
-        # ── Parameter validation ──────────────────────────────────────────────
-        if self._publish_rate <= 0.0:
-            self.log.warning(
-                f"publish_rate must be > 0.0. Falling back to {DEFAULT_PUBLISH_RATE:.1f} Hz."
-            )
-            self._publish_rate = DEFAULT_PUBLISH_RATE
+        self.serial_port  = self.get_parameter('serial_port').value
+        self.baud_rate    = self.get_parameter('baud_rate').value
+        self.odom_frame   = self.get_parameter('odom_frame').value
+        self.base_frame   = self.get_parameter('base_frame').value
+        self.publish_rate = self.get_parameter('publish_rate').value
 
-        if self._serial_timeout <= 0.0:
-            self.log.warning(
-                f"serial_timeout must be > 0.0. Falling back to {DEFAULT_SERIAL_TIMEOUT:.2f}s."
-            )
-            self._serial_timeout = DEFAULT_SERIAL_TIMEOUT
+        # ── Robot pose state ──────────────────────────────────────────────────
+        self.x     = 0.0
+        self.y     = 0.0
+        self.theta = 0.0
 
-        if self._ticks_per_rev <= 0:
-            self.log.warning(
-                f"encoder_ticks_per_rev must be > 0. Falling back to {DEFAULT_TICKS_PER_REV}."
-            )
-            self._ticks_per_rev = DEFAULT_TICKS_PER_REV
-
-        if self._wheel_base <= 0.0:
-            self.log.warning(
-                f"wheel_base must be > 0.0. Falling back to {DEFAULT_WHEEL_BASE:.3f}."
-            )
-            self._wheel_base = DEFAULT_WHEEL_BASE
-
-        if self._wheel_radius <= 0.0:
-            self.log.warning(
-                f"wheel_radius must be > 0.0. Falling back to {DEFAULT_WHEEL_RADIUS:.3f}."
-            )
-            self._wheel_radius = DEFAULT_WHEEL_RADIUS
-
-        if self._cmd_vel_timeout < 0.0:
-            self.log.warning(
-                "cmd_vel_timeout must be >= 0.0. Disabling timeout."
-            )
-            self._cmd_vel_timeout = 0.0
-
-        if self._reconnect_interval <= 0.0:
-            self.log.warning(
-                f"reconnect_interval must be > 0.0. Falling back to {DEFAULT_RECONNECT_INTERVAL:.1f}s."
-            )
-            self._reconnect_interval = DEFAULT_RECONNECT_INTERVAL
-
-        publish_period = 1.0 / self._publish_rate
-        if self._serial_timeout > publish_period:
-            self.log.warning(
-                f"serial_timeout ({self._serial_timeout:.3f}s) longer than "
-                f"publish period ({publish_period:.3f}s)..."
-            )
-
-        self._meters_per_tick = (
-            2.0 * math.pi * self._wheel_radius
-        ) / self._ticks_per_rev
-
-        # ── State ─────────────────────────────────────────────────────────────
-        self._x = 0.0
-        self._y = 0.0
-        self._theta = 0.0
-        self._prev_left_ticks = 0
-        self._prev_right_ticks = 0
-        self._has_encoder_baseline = False
-        self._last_cmd_linear = 0.0
-        self._last_cmd_angular = 0.0
-        self._cmd_timeout_active = False
-        self._last_battery_voltage = DEFAULT_BATTERY_VOLTAGE
-        self._last_cmd_time = self.get_clock().now()
-        self._last_reconnect_time = self.get_clock().now()
-
-        # ── ROS interfaces ────────────────────────────────────────────────────
-        self._odom_pub = self.create_publisher(Odometry, self._odom_topic, 10)
-        self._battery_pub = self.create_publisher(BatteryState, self._battery_topic, 10)
-
-        _cmd_vel_qos = QoSProfile(
-            depth=1,
-            reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST,
-        )
-        self.create_subscription(
-            Twist,
-            self._cmd_vel_topic,
-            self._cmd_vel_callback,
-            _cmd_vel_qos,
-        )
-
-        self._tf_broadcaster = TransformBroadcaster(self)
-
-        self._serial_conn = None
-        if self._sim_mode:
-            self.log.info(
-                "sim_mode=true — skipping serial connection, using simulated odometry."
-            )
-        else:
-            self._connect_serial()
-
+        # ── Last received /cmd_vel (for open-loop integration) ────────────────
+        self._cmd_linear  = 0.0
+        self._cmd_angular = 0.0
         self._last_update_time = self.get_clock().now()
-        self._timer = self.create_timer(1.0 / self._publish_rate, self._update)
 
-        self.log.info(
-            "esibot_driver started (port=%s, baud=%d, rate=%.1fHz, "
-            "odom_topic=%s, cmd_vel_topic=%s, frames=%s->%s, "
-            "vel_clamp=±%.2fm/s ±%.2frad/s)"
-            % (
-                self._serial_port,
-                self._baud_rate,
-                self._publish_rate,
-                self._odom_topic,
-                self._cmd_vel_topic,
-                self._odom_frame,
-                self._base_frame,
-                MAX_LINEAR_VEL,
-                MAX_ANGULAR_VEL,
-            )
+        # ── Battery voltage (updated from ESP32 BAT: messages) ────────────────
+        self._battery_voltage = 11.1
+
+        # ── ROS2 Publishers ───────────────────────────────────────────────────
+        self.odom_pub       = self.create_publisher(Odometry,     '/odom',          10)
+        self.battery_pub    = self.create_publisher(BatteryState, '/battery_state', 10)
+        self.tf_broadcaster = TransformBroadcaster(self)
+
+        # ── ROS2 Subscriber ───────────────────────────────────────────────────
+        self.create_subscription(Twist, '/cmd_vel', self._cmd_vel_callback, 10)
+
+        # ── Serial connection ─────────────────────────────────────────────────
+        self.serial_conn = None
+        self._connect_serial()
+
+        # ── Periodic update timer ─────────────────────────────────────────────
+        self.create_timer(1.0 / self.publish_rate, self._update)
+
+        self.get_logger().info(
+            f'esibot_driver (open-loop) | port={self.serial_port} | '
+            f'{self.publish_rate}Hz | WHEEL_BASE={WHEEL_BASE}m | '
+            f'LINEAR_SPEED={LINEAR_SPEED_MPS}m/s | ANGULAR_SPEED={ANGULAR_SPEED_RPS}rad/s'
         )
 
-    def _connect_serial(self) -> None:
-        if self._serial_conn:
-            try:
-                self._serial_conn.close()
-            except Exception:
-                pass
-            self._serial_conn = None
+    # ══════════════════════════════════════════════════════════════════════════
+    #  SERIAL CONNECTION
+    # ══════════════════════════════════════════════════════════════════════════
 
+    def _connect_serial(self):
+        """
+        Opens UART on /dev/ttyAMA0 (Pi GPIO14=TX Pin8, GPIO15=RX Pin10).
+
+        IMPORTANT — before first use, disable the Pi serial console:
+            sudo raspi-config
+            → Interface Options → Serial Port
+            → "login shell over serial?" → No
+            → "serial port hardware enabled?" → Yes
+            → Reboot
+        """
         try:
             import serial
-        except Exception as exc:
-            self.log.warning(
-                f"pyserial not available ({exc}). Running without hardware."
+            self.serial_conn = serial.Serial(
+                self.serial_port,
+                self.baud_rate,
+                timeout=0.05   # short so the 20Hz loop is never blocked
             )
-            self._serial_conn = None
-            return
+            self.get_logger().info(f'Serial connected on {self.serial_port}')
+        except Exception as e:
+            self.serial_conn = None
+            self.get_logger().warn(
+                f'Serial not available ({e}) — running in simulation mode.'
+            )
 
-        try:
-            self._serial_conn = serial.Serial(
-                self._serial_port,
-                self._baud_rate,
-                timeout=self._serial_timeout,
-            )
-            self.log.info(f"Serial connected on {self._serial_port}")
-        except Exception as exc:
-            self.log.warning(
-                f"Serial not available on {self._serial_port} ({exc}). Running without hardware."
-            )
-            self._serial_conn = None
+    # ══════════════════════════════════════════════════════════════════════════
+    #  MAIN UPDATE LOOP  (20 Hz)
+    # ══════════════════════════════════════════════════════════════════════════
 
-    def _update(self) -> None:
+    def _update(self):
+        """
+        1. Read any incoming line from ESP32 (battery voltage).
+        2. Integrate the last known command into the pose (open-loop odometry).
+        3. Publish /odom, /tf, /battery_state.
+        """
+        self._read_serial()
+
+        # ── Compute dt ────────────────────────────────────────────────────────
         now = self.get_clock().now()
-
-        if not self._sim_mode and self._serial_conn is None and self._reconnect_on_error:
-            since_reconnect = (now - self._last_reconnect_time).nanoseconds * 1e-9
-            if since_reconnect >= self._reconnect_interval:
-                self._last_reconnect_time = now
-                self._connect_serial()
-
-        if self._cmd_vel_timeout > 0.0:
-            since_cmd = (now - self._last_cmd_time).nanoseconds * 1e-9
-            if since_cmd > self._cmd_vel_timeout:
-                if not self._cmd_timeout_active:
-                    self.log.warning(
-                        f"cmd_vel timeout ({self._cmd_vel_timeout:.2f}s) exceeded; stopping the robot."
-                    )
-                self._cmd_timeout_active = True
-                self._last_cmd_linear = 0.0
-                self._last_cmd_angular = 0.0
-                if self._serial_conn is not None:
-                    self._send_motor_cmd(0.0, 0.0)
-            else:
-                self._cmd_timeout_active = False
-
-        dt = (now - self._last_update_time).nanoseconds * 1e-9
-        if dt <= 0.0:
-            dt = 1.0 / self._publish_rate
+        dt  = (now - self._last_update_time).nanoseconds / 1e9
         self._last_update_time = now
+        dt  = min(dt, 0.5)   # clamp: avoid huge jumps if node was paused
 
-        if self._serial_conn is None:
-            dist_center, delta_theta, battery_voltage = self._simulate_motion(dt)
-        else:
-            left_ticks, right_ticks, battery_voltage = self._read_encoders()
-            if not self._has_encoder_baseline:
-                self._prev_left_ticks = left_ticks
-                self._prev_right_ticks = right_ticks
-                self._has_encoder_baseline = True
-                dist_center = 0.0
-                delta_theta = 0.0
-            else:
-                delta_left = left_ticks - self._prev_left_ticks
-                delta_right = right_ticks - self._prev_right_ticks
-                self._prev_left_ticks = left_ticks
-                self._prev_right_ticks = right_ticks
+        # ── Map command to real-world speed using calibrated constants ─────────
+        v = math.copysign(LINEAR_SPEED_MPS,  self._cmd_linear)  if abs(self._cmd_linear)  > DEAD_ZONE else 0.0
+        w = math.copysign(ANGULAR_SPEED_RPS, self._cmd_angular) if abs(self._cmd_angular) > DEAD_ZONE else 0.0
 
-                dist_left = delta_left * self._meters_per_tick
-                dist_right = delta_right * self._meters_per_tick
-                dist_center = (dist_right + dist_left) / 2.0
-                delta_theta = (dist_right - dist_left) / self._wheel_base
+        # ── Integrate pose ────────────────────────────────────────────────────
+        dist_center = v * dt
+        delta_theta = w * dt
 
-        # Midpoint (Runge-Kutta 2nd-order) integration — more accurate than Euler
-        self._x += dist_center * math.cos(self._theta + delta_theta / 2.0)
-        self._y += dist_center * math.sin(self._theta + delta_theta / 2.0)
-        self._theta += delta_theta
-        # Wrap θ to (−π, π] to prevent floating-point accumulation error
-        self._theta = math.atan2(math.sin(self._theta), math.cos(self._theta))
+        self.x     += dist_center * math.cos(self.theta + delta_theta / 2.0)
+        self.y     += dist_center * math.sin(self.theta + delta_theta / 2.0)
+        self.theta += delta_theta
+        self.theta  = math.atan2(math.sin(self.theta), math.cos(self.theta))
 
+        # ── Publish ───────────────────────────────────────────────────────────
         stamp = now.to_msg()
-        self._publish_odometry(stamp, dist_center, delta_theta, dt)
-        if self._publish_tf_enabled:
-            self._publish_tf(stamp)
-        self._publish_battery(stamp, battery_voltage)
+        self._publish_odometry(stamp, v, w)
+        self._publish_tf(stamp)
+        self._publish_battery(self._battery_voltage)
 
-    def _simulate_motion(self, dt: float) -> Tuple[float, float, float]:
-        dist_center = self._last_cmd_linear * dt
-        delta_theta = self._last_cmd_angular * dt
-        return dist_center, delta_theta, DEFAULT_BATTERY_VOLTAGE
+    # ══════════════════════════════════════════════════════════════════════════
+    #  READ INCOMING SERIAL FROM ESP32
+    # ══════════════════════════════════════════════════════════════════════════
 
-    def _read_encoders(self) -> Tuple[int, int, float]:
-        if self._serial_conn is None:
-            return (
-                self._prev_left_ticks,
-                self._prev_right_ticks,
-                self._last_battery_voltage,
-            )
-
-        try:
-            line = self._serial_conn.readline().decode("utf-8", errors="ignore").strip()
-            if not line.startswith("ENC:"):
-                return (
-                    self._prev_left_ticks,
-                    self._prev_right_ticks,
-                    self._last_battery_voltage,
-                )
-
-            parts = line[4:].split(",")
-            if len(parts) < 2:
-                return (
-                    self._prev_left_ticks,
-                    self._prev_right_ticks,
-                    self._last_battery_voltage,
-                )
-
-            left_ticks = int(parts[0])
-            right_ticks = int(parts[1])
-            if len(parts) > 2:
-                self._last_battery_voltage = float(parts[2])
-            return left_ticks, right_ticks, self._last_battery_voltage
-
-        except Exception as exc:
-            self.log.warning(f"Encoder parse error: {exc}")
-            return (
-                self._prev_left_ticks,
-                self._prev_right_ticks,
-                self._last_battery_voltage,
-            )
-
-    def _cmd_vel_callback(self, msg: Twist) -> None:
-        self._last_cmd_linear = max(-MAX_LINEAR_VEL, min(MAX_LINEAR_VEL, msg.linear.x))
-        self._last_cmd_angular = max(
-            -MAX_ANGULAR_VEL, min(MAX_ANGULAR_VEL, msg.angular.z)
-        )
-        self._last_cmd_time = self.get_clock().now()
-
-        if self._serial_conn is None:
-            return
-
-        v_right = self._last_cmd_linear + (
-            self._last_cmd_angular * self._wheel_base / 2.0
-        )
-        v_left = self._last_cmd_linear - (
-            self._last_cmd_angular * self._wheel_base / 2.0
-        )
-        self._send_motor_cmd(v_right, v_left)
-
-    def _send_motor_cmd(self, v_right: float, v_left: float) -> None:
-        if self._serial_conn is None:
+    def _read_serial(self):
+        """
+        Non-blocking read of one line from ESP32.
+        Parses:  "BAT:11.2\\n"  → updates battery voltage
+        Ignores: "ENC:..." (no encoders in this build)
+        Logs:    everything else as debug (ESP32 Serial.print messages)
+        """
+        if self.serial_conn is None:
             return
         try:
-            self._serial_conn.write(f"CMD:{v_right:.3f},{v_left:.3f}\n".encode())
-        except Exception as exc:
-            self.log.warning(f"Serial write error: {exc}")
+            line = self.serial_conn.readline().decode('utf-8').strip()
+            if not line:
+                return
+            if line.startswith('BAT:'):
+                self._battery_voltage = float(line[4:])
+            elif line.startswith('ENC:'):
+                pass   # ignore, no encoders
+            else:
+                self.get_logger().debug(f'ESP32: {line}')
+        except Exception as e:
+            self.get_logger().warn(f'Serial read error: {e}')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  /cmd_vel CALLBACK  →  send CMD to ESP32
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _cmd_vel_callback(self, msg: Twist):
+        """
+        Stores the command for open-loop odometry integration.
+        Sends "CMD:<v_right>,<v_left>\\n" to ESP32 immediately.
+
+        The ESP32 interprets:
+          positive value → forward direction for that wheel
+          negative value → reverse direction
+          magnitude      → speed level (ESP32 maps to PWM duty or on/off)
+
+        Since ENA/ENB are hardwired to 5V, the ESP32 controls speed by
+        toggling IN1/IN2 (left) and IN3/IN4 (right):
+          Forward:  IN1=HIGH IN2=LOW  (or IN3=HIGH IN4=LOW)
+          Backward: IN1=LOW  IN2=HIGH (or IN3=LOW  IN4=HIGH)
+          Stop:     IN1=LOW  IN2=LOW
+        """
+        self._cmd_linear  = msg.linear.x
+        self._cmd_angular = msg.angular.z
+
+        v_right = msg.linear.x + (msg.angular.z * WHEEL_BASE / 2.0)
+        v_left  = msg.linear.x - (msg.angular.z * WHEEL_BASE / 2.0)
+
+        if self.serial_conn is not None:
+            cmd = f'CMD:{v_right:.3f},{v_left:.3f}\n'
             try:
-                self._serial_conn.close()
-            except Exception:
-                pass
-            self._serial_conn = None
+                self.serial_conn.write(cmd.encode('utf-8'))
+            except Exception as e:
+                self.get_logger().warn(f'Serial write error: {e}')
 
-    def _publish_odometry(
-        self, stamp, dist_center: float, delta_theta: float, dt: float
-    ) -> None:
+    # ══════════════════════════════════════════════════════════════════════════
+    #  PUBLISHERS
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _publish_odometry(self, stamp, linear_vel, angular_vel):
         msg = Odometry()
-        msg.header.stamp = stamp
-        msg.header.frame_id = self._odom_frame
-        msg.child_frame_id = self._base_frame  # 'base_link' by default
+        msg.header.stamp    = stamp
+        msg.header.frame_id = self.odom_frame
+        msg.child_frame_id  = self.base_frame
 
-        msg.pose.pose.position.x = self._x
-        msg.pose.pose.position.y = self._y
-        msg.pose.pose.position.z = 0.0
-        msg.pose.pose.orientation = _yaw_to_quaternion(self._theta)
+        msg.pose.pose.position.x  = self.x
+        msg.pose.pose.position.y  = self.y
+        msg.pose.pose.position.z  = 0.0
+        msg.pose.pose.orientation = _yaw_to_quaternion(self.theta)
 
-        msg.pose.covariance[0] = 0.01  # x
-        msg.pose.covariance[7] = 0.01  # y
-        msg.pose.covariance[35] = 0.01  # yaw
+        msg.twist.twist.linear.x  = linear_vel
+        msg.twist.twist.angular.z = angular_vel
 
-        if dt > 0.0:
-            linear = dist_center / dt
-            angular = delta_theta / dt
-        else:
-            linear = 0.0
-            angular = 0.0
+        # Higher covariance → slam_toolbox trusts scan more than odometry
+        # This is correct for open-loop (drifts more than encoder-based)
+        msg.pose.covariance[0]  = 0.1    # x
+        msg.pose.covariance[7]  = 0.1    # y
+        msg.pose.covariance[35] = 0.05   # yaw
 
-        msg.twist.twist.linear.x = linear
-        msg.twist.twist.angular.z = angular
-        msg.twist.covariance[0] = 0.01
-        msg.twist.covariance[7] = 0.01
-        msg.twist.covariance[35] = 0.01
+        self.odom_pub.publish(msg)
 
-        self._odom_pub.publish(msg)
+    def _publish_tf(self, stamp):
+        t = TransformStamped()
+        t.header.stamp            = stamp
+        t.header.frame_id         = self.odom_frame
+        t.child_frame_id          = self.base_frame
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+        t.transform.rotation      = _yaw_to_quaternion(self.theta)
+        self.tf_broadcaster.sendTransform(t)
 
-    def _publish_tf(self, stamp) -> None:
-        transform = TransformStamped()
-        transform.header.stamp = stamp
-        transform.header.frame_id = self._odom_frame
-        transform.child_frame_id = self._base_frame  # 'base_link' by default
-        transform.transform.translation.x = self._x
-        transform.transform.translation.y = self._y
-        transform.transform.translation.z = 0.0
-        transform.transform.rotation = _yaw_to_quaternion(self._theta)
-        self._tf_broadcaster.sendTransform(transform)
-
-    def _publish_battery(self, stamp, voltage: float) -> None:
+    def _publish_battery(self, voltage: float):
         msg = BatteryState()
-        msg.header.stamp = stamp
-        msg.header.frame_id = self._base_frame
         msg.voltage = voltage
         msg.present = True
-        self._battery_pub.publish(msg)
+        self.battery_pub.publish(msg)
 
-    def destroy_node(self) -> None:
-        if self._serial_conn:
+    # ══════════════════════════════════════════════════════════════════════════
+    #  CLEANUP
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def destroy_node(self):
+        if self.serial_conn is not None:
             try:
-                self._serial_conn.write(b"CMD:0.000,0.000\n")
+                self.serial_conn.write(b'CMD:0.000,0.000\n')  # safety stop
             except Exception:
                 pass
-            self._serial_conn.close()
+            self.serial_conn.close()
         super().destroy_node()
 
 
+# ─────────────────────────────────────────────────────────
+#  HELPER
+# ─────────────────────────────────────────────────────────
+
 def _yaw_to_quaternion(yaw: float) -> Quaternion:
-    quat = Quaternion()
-    quat.x = 0.0
-    quat.y = 0.0
-    quat.z = math.sin(yaw / 2.0)
-    quat.w = math.cos(yaw / 2.0)
-    return quat
+    q = Quaternion()
+    q.x = 0.0
+    q.y = 0.0
+    q.z = math.sin(yaw / 2.0)
+    q.w = math.cos(yaw / 2.0)
+    return q
 
 
-def main(args=None) -> None:
-    setup_logging()
+# ─────────────────────────────────────────────────────────
+#  ENTRY POINT
+# ─────────────────────────────────────────────────────────
+
+def main(args=None):
     rclpy.init(args=args)
     node = EsibotDriver()
     try:
@@ -441,16 +311,9 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        try:
-            node.destroy_node()
-        except KeyboardInterrupt:
-            pass
-        try:
-            if rclpy.ok():
-                rclpy.shutdown()
-        except Exception:
-            pass
+        node.destroy_node()
+        rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

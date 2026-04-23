@@ -1,33 +1,11 @@
-# Configuration for esibot_driver.
-# All values can be overridden from the launch file or command line.
+# driver_params.yaml — open-loop version (no encoders)
+# serial_port changed to /dev/ttyAMA0 (Pi GPIO UART, Pin8/Pin10)
+# Before using: disable Pi serial console via raspi-config → Interface Options → Serial Port
 
 esibot_driver:
   ros__parameters:
-    # Serial connection to ESP32
-    serial_port: "/dev/ttyUSB0"
-    baud_rate: 115200
-    serial_timeout: 0.03
-
-    # Robot geometry (meters)
-    wheel_base: 0.138
-    wheel_radius: 0.033
-    encoder_ticks_per_rev: 330
-
-    # Frames (must match the URDF from esibot_description)
-    odom_frame: "odom"
-    base_frame: "base_footprint"
-
-    # Topics (relative to namespace)
-    odom_topic: "odom"
-    cmd_vel_topic: "cmd_vel"
-    battery_topic: "battery_state"
-
-    # Publishing
+    serial_port:  '/dev/ttyAMA0'   # GPIO UART (Pi Pin8 TX → ESP32 GPIO3, Pin10 RX → ESP32 GPIO1)
+    baud_rate:    115200
+    odom_frame:   'odom'
+    base_frame:   'base_footprint'
     publish_rate: 20.0
-    publish_tf: true
-
-    # Safety / robustness
-    # Set to 0.0 to disable the timeout behavior.
-    cmd_vel_timeout: 0.5
-    reconnect_on_error: true
-    reconnect_interval: 2.0
