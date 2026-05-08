@@ -13,7 +13,12 @@ export default function VideoFeed() {
   return (
     <div className="card video-card">
       <div className="card-title">
-        Camera
+        <span className="card-title-left">
+          <svg className="card-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
+          </svg>
+          <h2 className="card-heading">Camera</h2>
+        </span>
         <div className="topic-switcher">
           {Object.keys(TOPICS).map((k) => (
             <button
@@ -27,12 +32,15 @@ export default function VideoFeed() {
         </div>
       </div>
 
-      <div className="video-frame">
+      <div className="video-frame" aria-live="polite">
         {imgSrc ? (
-          <img src={imgSrc} alt="camera feed" className="video-img" />
+          <img src={imgSrc} alt={`${selected} camera feed`} className="video-img" />
         ) : (
           <div className="video-placeholder">
-            <span>No feed</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/>
+            </svg>
+            <span>Waiting for camera feed...</span>
           </div>
         )}
       </div>

@@ -4,10 +4,11 @@ import { useMap }  from '../hooks/useMap'
 import { useOdom } from '../hooks/useOdom'
 import { useScan } from '../hooks/useScan'
 import { useRosbridgeContext } from '../context/RosbridgeContext'
+import { useTheme } from '../context/ThemeContext'
 import { SCAN_OVERLAY } from '../config.js'
 import {
   worldToCanvas, canvasToWorld,
-  drawRobot, drawScan, drawPath, drawGoal, drawInitialPose
+  drawRobot, drawScan, drawPath, drawGoal
 } from '../utils/mapUtils'
 
 const MAX_PATH_LEN = 500
@@ -20,6 +21,7 @@ export default function MapCanvas() {
   const { pose } = useOdom()
   const { scan } = useScan()
   const { rosRef, connected } = useRosbridgeContext()
+  const { theme } = useTheme()
 
   const pathRef     = useRef([])
   const scaleRef    = useRef(2)
@@ -27,23 +29,17 @@ export default function MapCanvas() {
   const dragging    = useRef(false)
   const lastPt      = useRef({ x: 0, y: 0 })
   const centeredRef = useRef(false)
+  const touchRef    = useRef({ lastDist: 0, lastPt: null })
 
-  const [goalMode,   setGoalMode]   = useState(false)
-  const [goalPt,     setGoalPt]     = useState(null)
+  const [goalMode, setGoalMode] = useState(false)
+  const [goalPt, setGoalPt] = useState(null)
   const [goalStatus, setGoalStatus] = useState(null)
   const goalModeRef = useRef(false)
-
-  const [poseMode,   setPoseMode]   = useState(false)
-  const [posePt,     setPosePt]     = useState(null)
-  const [poseStatus, setPoseStatus] = useState(null)
-  const poseModeRef = useRef(false)
 
   const [mapSaveStatus, setMapSaveStatus] = useState(null)
 
   useEffect(() => { goalModeRef.current = goalMode }, [goalMode])
-  useEffect(() => { poseModeRef.current = poseMode }, [poseMode])
 
-  // Subscribe to /save_map_status and /nav_goal_status
   useEffect(() => {
     if (!rosRef.current) return
     const saveTopic = new ROSLIB.Topic({
@@ -69,7 +65,6 @@ export default function MapCanvas() {
     return () => { saveTopic.unsubscribe(); goalStatusTopic.unsubscribe() }
   }, [rosRef, connected])
 
-  // Match canvas resolution to display size
   useEffect(() => {
     const obs = new ResizeObserver(() => {
       const canvas = canvasRef.current
@@ -83,7 +78,6 @@ export default function MapCanvas() {
     return () => obs.disconnect()
   }, [])
 
-  // Accumulate path
   useEffect(() => {
     const path = pathRef.current
     const last = path[path.length - 1]
@@ -105,35 +99,10 @@ export default function MapCanvas() {
     }
   }, [mapMetaRef, pose])
 
-  // Publier la pose initiale → /initialpose
-  const sendInitialPose = useCallback((wx, wy) => {
-    if (!rosRef.current) return
-    const pub = new ROSLIB.Topic({
-      ros:         rosRef.current,
-      name:        '/initialpose',
-      messageType: 'geometry_msgs/PoseWithCovarianceStamped'
-    })
-    pub.publish(new ROSLIB.Message({
-      header: { frame_id: 'map', stamp: { sec: 0, nanosec: 0 } },
-      pose: {
-        pose: {
-          position:    { x: wx, y: wy, z: 0 },
-          orientation: { x: 0,  y: 0,  z: 0, w: 1 }
-        },
-        covariance: [0.25,0,0,0,0,0, 0,0.25,0,0,0,0, 0,0,0,0,0,0,
-                     0,0,0,0,0,0,   0,0,0,0,0,0,   0,0,0,0,0,0.07]
-      }
-    }))
-    setPoseStatus('sent')
-    setPoseMode(false)
-  }, [rosRef])
-
-  // Send NavigateToPose goal via nav_goal_proxy node (PoseStamped on /nav_goal)
   const sendGoal = useCallback((wx, wy) => {
     const ros = rosRef.current
     if (!ros) return
     setGoalStatus('sending')
-
     const topic = new ROSLIB.Topic({
       ros,
       name: '/nav_goal',
@@ -146,14 +115,17 @@ export default function MapCanvas() {
         orientation: { x: 0,  y: 0,  z: 0, w: 1 }
       }
     }))
-
     setGoalMode(false)
   }, [rosRef])
 
-  // Render loop
   useEffect(() => {
-    let timer
-    const draw = () => {
+    let rafId
+    let lastFrame = 0
+    const draw = (timestamp) => {
+      rafId = requestAnimationFrame(draw)
+      if (timestamp - lastFrame < 1000 / FPS) return
+      lastFrame = timestamp
+
       const canvas = canvasRef.current
       if (!canvas) return
       const ctx = canvas.getContext('2d')
@@ -161,7 +133,7 @@ export default function MapCanvas() {
       const h = canvas.height
 
       ctx.clearRect(0, 0, w, h)
-      ctx.fillStyle = '#1e293b'
+      ctx.fillStyle = theme === 'light' ? '#e8edf4' : '#0a0f1e'
       ctx.fillRect(0, 0, w, h)
 
       const meta      = mapMetaRef.current
@@ -190,10 +162,6 @@ export default function MapCanvas() {
           const { cx: gcx, cy: gcy } = worldToCanvas(goalPt.wx, goalPt.wy, meta, s)
           drawGoal(ctx, gcx, gcy)
         }
-        if (posePt) {
-          const { cx: pcx, cy: pcy } = worldToCanvas(posePt.wx, posePt.wy, meta, s)
-          drawInitialPose(ctx, pcx, pcy)
-        }
         ctx.restore()
       } else {
         const cx = w / 2 + panRef.current.x
@@ -215,48 +183,34 @@ export default function MapCanvas() {
         }
         drawRobot(ctx, cx, cy, pose.yaw, 20)
         ctx.restore()
-        ctx.fillStyle = '#475569'
-        ctx.font = '12px Inter, sans-serif'
+        const dots = '.'.repeat(Math.floor((Date.now() / 500) % 4))
+        ctx.fillStyle = '#64748b'
+        ctx.font = '14px Inter, sans-serif'
         ctx.textAlign = 'center'
-        ctx.fillText('En attente de la carte…', w / 2, 20)
+        ctx.fillText('Waiting for map data' + dots, w / 2, 24)
       }
 
-      // Goal mode cursor hint
       if (goalModeRef.current) {
-        ctx.fillStyle = 'rgba(245,158,11,0.15)'
+        ctx.fillStyle = 'rgba(251,191,36,0.06)'
         ctx.fillRect(0, 0, w, h)
-        ctx.fillStyle = '#f59e0b'
-        ctx.font = '13px Inter, sans-serif'
+        ctx.fillStyle = '#fbbf24'
+        ctx.font = '15px Inter, sans-serif'
         ctx.textAlign = 'center'
-        ctx.fillText('Cliquez sur la carte pour définir la destination', w / 2, h - 12)
+        ctx.fillText('Click on the map to set navigation goal', w / 2, h - 16)
       }
-
-      // Pose mode cursor hint
-      if (poseModeRef.current) {
-        ctx.fillStyle = 'rgba(34,197,94,0.12)'
-        ctx.fillRect(0, 0, w, h)
-        ctx.fillStyle = '#22c55e'
-        ctx.font = '13px Inter, sans-serif'
-        ctx.textAlign = 'center'
-        ctx.fillText('Cliquez sur la carte pour définir la pose initiale', w / 2, h - 12)
-      }
-
-      timer = setTimeout(draw, 1000 / FPS)
     }
-    draw()
-    return () => clearTimeout(timer)
-  }, [mapMetaRef, offscreenRef, pose, scan, autoCenter, goalPt])
+    rafId = requestAnimationFrame(draw)
+    return () => cancelAnimationFrame(rafId)
+    /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [mapMetaRef, offscreenRef, pose, scan, autoCenter, goalPt, theme])
 
-  // Zoom
   const onWheel = useCallback((e) => {
-    e.preventDefault()
     const factor = e.deltaY < 0 ? 1.15 : 0.87
     scaleRef.current = Math.min(20, Math.max(0.2, scaleRef.current * factor))
   }, [])
 
-  // Click → goal or pan start
   const onMouseDown = (e) => {
-    if (goalModeRef.current || poseModeRef.current) return
+    if (goalModeRef.current) return
     dragging.current = true
     lastPt.current = { x: e.clientX, y: e.clientY }
   }
@@ -280,26 +234,69 @@ export default function MapCanvas() {
     if (goalModeRef.current) {
       setGoalPt({ cx: cx - panRef.current.x, cy: cy - panRef.current.y, wx, wy })
       sendGoal(wx, wy)
-    } else if (poseModeRef.current) {
-      setPosePt({ cx: cx - panRef.current.x, cy: cy - panRef.current.y, wx, wy })
-      sendInitialPose(wx, wy)
     }
   }
 
   const onMouseLeave = () => { dragging.current = false }
 
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      touchRef.current.lastDist = Math.hypot(dx, dy)
+      touchRef.current.lastPt = null
+    } else if (e.touches.length === 1) {
+      if (goalModeRef.current) return
+      touchRef.current.lastPt = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      dragging.current = true
+    }
+  }
+
+  const onTouchMove = (e) => {
+    e.preventDefault()
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX
+      const dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.hypot(dx, dy)
+      if (touchRef.current.lastDist) {
+        const factor = dist / touchRef.current.lastDist
+        scaleRef.current = Math.min(20, Math.max(0.2, scaleRef.current * factor))
+      }
+      touchRef.current.lastDist = dist
+    } else if (e.touches.length === 1 && dragging.current && touchRef.current.lastPt) {
+      const t = e.touches[0]
+      panRef.current.x += t.clientX - touchRef.current.lastPt.x
+      panRef.current.y += t.clientY - touchRef.current.lastPt.y
+      touchRef.current.lastPt = { x: t.clientX, y: t.clientY }
+    }
+  }
+
+  const onTouchEnd = (e) => {
+    if (dragging.current && e.changedTouches.length === 1 && !touchRef.current.lastPt) {
+      dragging.current = false
+      return
+    }
+    if (goalModeRef.current && e.changedTouches.length === 1) {
+      const t = e.changedTouches[0]
+      const meta = mapMetaRef.current
+      if (!meta || !canvasRef.current) return
+      const rect = canvasRef.current.getBoundingClientRect()
+      const scaleRatio = canvasRef.current.width / rect.width
+      const cx = (t.clientX - rect.left) * scaleRatio
+      const cy = (t.clientY - rect.top) * scaleRatio
+      const { wx, wy } = canvasToWorld(cx, cy, meta, scaleRef.current, panRef.current)
+      setGoalPt({ cx: cx - panRef.current.x, cy: cy - panRef.current.y, wx, wy })
+      sendGoal(wx, wy)
+    }
+    dragging.current = false
+    touchRef.current.lastPt = null
+    touchRef.current.lastDist = 0
+  }
   const recenter = () => { centeredRef.current = false; autoCenter() }
 
   const toggleGoalMode = () => {
     setGoalMode(m => !m)
-    setPoseMode(false)
     setGoalStatus(null)
-  }
-
-  const togglePoseMode = () => {
-    setPoseMode(m => !m)
-    setGoalMode(false)
-    setPoseStatus(null)
   }
 
   const saveMap = useCallback(() => {
@@ -313,40 +310,30 @@ export default function MapCanvas() {
     topic.publish(new ROSLIB.Message({}))
   }, [rosRef])
 
-  const mapSaveLabel = mapSaveStatus === 'saving' ? 'Saving…' : mapSaveStatus === 'saved' ? 'Saved ✓' : mapSaveStatus === 'error' ? 'Erreur' : '💾 Save Map'
-  const mapSaveColor = mapSaveStatus === 'saved' ? '#22c55e' : mapSaveStatus === 'error' ? '#ef4444' : undefined
-
-  const goalBtnLabel  = goalMode ? 'Annuler' : '⚑ Envoyer un goal'
-  const poseBtnLabel  = poseMode ? 'Annuler' : '⊕ Pose initiale'
-  const statusColor   = goalStatus === 'sent' ? '#22c55e' : goalStatus === 'error' ? '#ef4444' : '#f59e0b'
-  const statusLabel   = goalStatus === 'sending' ? 'Envoi…' : goalStatus === 'navigating' ? 'Navigation…' : goalStatus === 'sent' ? 'Goal envoyé' : goalStatus === 'error' ? 'Erreur Nav2' : null
-  const poseStatusColor = poseStatus === 'sent' ? '#22c55e' : '#f59e0b'
-  const poseStatusLabel = poseStatus === 'sent' ? 'Pose envoyée' : null
+  const mapSaveLabel = mapSaveStatus === 'saving' ? 'Saving...' : mapSaveStatus === 'saved' ? 'Saved' : mapSaveStatus === 'error' ? 'Error' : 'Save Map'
+  const mapSaveColor = mapSaveStatus === 'saved' ? '#34d399' : mapSaveStatus === 'error' ? '#f87171' : undefined
+  const goalBtnLabel = goalMode ? 'Cancel' : 'Nav Goal'
+  const statusColor = goalStatus === 'sent' ? '#34d399' : goalStatus === 'error' ? '#f87171' : '#fbbf24'
+  const statusLabel = goalStatus === 'sending' ? 'Sending...' : goalStatus === 'navigating' ? 'Navigating...' : goalStatus === 'sent' ? 'Goal Reached' : goalStatus === 'error' ? 'Nav2 Error' : null
 
   return (
     <div className="card map-card">
       <div className="card-title">
-        Map
+        <span className="card-title-left">
+          <svg className="card-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/>
+          </svg>
+          <h2 className="card-heading">Map</h2>
+        </span>
         <div className="map-controls">
-          {poseStatusLabel && (
-            <span className="goal-status" style={{ color: poseStatusColor }}>{poseStatusLabel}</span>
-          )}
           {statusLabel && (
-            <span className="goal-status" style={{ color: statusColor }}>{statusLabel}</span>
+            <span className="goal-status" style={{ color: statusColor }} aria-live="polite">{statusLabel}</span>
           )}
-          <button
-            className={`map-btn${poseMode ? ' active-green' : ''}`}
-            onClick={togglePoseMode}
-            disabled={!connected}
-            title="Cliquer sur la carte pour définir la pose initiale AMCL"
-          >
-            {poseBtnLabel}
-          </button>
           <button
             className={`map-btn${goalMode ? ' active' : ''}`}
             onClick={toggleGoalMode}
             disabled={!connected}
-            title="Cliquer sur la carte pour envoyer un goal Nav2"
+            title="Click on the map to send a Nav2 goal"
           >
             {goalBtnLabel}
           </button>
@@ -355,23 +342,35 @@ export default function MapCanvas() {
             onClick={saveMap}
             disabled={!connected}
             style={mapSaveColor ? { color: mapSaveColor, borderColor: mapSaveColor } : undefined}
-            title="Sauvegarder la carte SLAM"
+            title="Save SLAM map"
           >
             {mapSaveLabel}
           </button>
-          <button className="map-btn" onClick={recenter} title="Recentrer">⊙</button>
+          <button className="map-btn" onClick={recenter} title="Recenter" aria-label="Recenter map">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>
+            </svg>
+          </button>
         </div>
       </div>
-      <div ref={wrapRef} className="map-wrap">
+      <div ref={wrapRef} className={`map-wrap${goalMode ? ' goal-active' : ''}`}>
         <canvas
           ref={canvasRef}
           className={`map-canvas${goalMode ? ' goal-cursor' : ''}`}
+          role="img"
+          aria-label={goalMode ? 'Robot map — tap to set navigation goal' : 'Robot map showing position and SLAM data'}
+          tabIndex={0}
           onWheel={onWheel}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
           onMouseLeave={onMouseLeave}
-        />
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          Robot map view — requires canvas support
+        </canvas>
       </div>
     </div>
   )

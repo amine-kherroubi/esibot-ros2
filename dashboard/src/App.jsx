@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { RosbridgeProvider } from './context/RosbridgeContext'
+import { ThemeProvider } from './context/ThemeContext'
 import { ToastProvider, useToast } from './components/Toast'
 import { useRosbridgeContext } from './context/RosbridgeContext'
 
@@ -33,18 +34,13 @@ function Dashboard() {
       <ConnectionToaster />
       <Header />
       <main className="dashboard-grid">
-        {/* Left column */}
         <div className="col-left">
           <VideoFeed />
           <Teleop />
         </div>
-
-        {/* Center column */}
         <div className="col-center">
           <MapCanvas />
         </div>
-
-        {/* Right column */}
         <div className="col-right">
           <ConnectionPanel />
           <BatteryPanel />
@@ -57,10 +53,12 @@ function Dashboard() {
 
 export default function App() {
   return (
-    <RosbridgeProvider>
-      <ToastProvider>
-        <Dashboard />
-      </ToastProvider>
-    </RosbridgeProvider>
+    <ThemeProvider>
+      <RosbridgeProvider>
+        <ToastProvider>
+          <Dashboard />
+        </ToastProvider>
+      </RosbridgeProvider>
+    </ThemeProvider>
   )
 }
