@@ -2,32 +2,29 @@
 """
 EsibotSensors - HC-SR04 sweep node
 ==================================
-Publishes sensor_msgs/LaserScan on /scan by sweeping an SG90 servo
-through +/- pi/2 (-90 deg to +90 deg, centered on forward) and recording one
-HC-SR04 distance per step.
+Architecture réelle (wiring diagram) :
+  - RPi      → HC-SR04  : TRIG=GPIO23, ECHO=GPIO24 (via diviseur 1.2kΩ/1.5kΩ)
+  - ESP32-CAM → MG996R  : PWM sur GPIO15 (50Hz, pull-down 10kΩ hardware obligatoire)
+  - RPi ↔ ESP32-CAM     : UART (RPi TX=GPIO14/Pin8, RX=GPIO15/Pin10)
 
-Convention (matches URDF servo_joint limits):
-  angle = -pi/2 -> sensor faces right  (-Y)
-  angle = 0     -> sensor faces forward (+X)  <- home / center
-  angle = +pi/2 -> sensor faces left   (+Y)
-
+Le RPi envoie la consigne d'angle au ESP32 via UART,
+attend que le servo soit en position, puis déclenche le HC-SR04.
 """
 
 import math
 import random
+import serial          # pyserial — communication UART vers ESP32
 import time
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
-from sensor_msgs.msg import JointState
+from sensor_msgs.msg import LaserScan, JointState
 
 from esibot_logging import get_logger, setup_logging
 
-# Try to import GPIO. If unavailable, fall back to simulation mode.
+# ── GPIO (RPi uniquement : TRIG + ECHO) ─────────────────────────────────────
 try:
     import RPi.GPIO as GPIO
-
     HARDWARE_AVAILABLE = True
     GPIO_IMPORT_ERROR = None
 except ImportError as exc:
@@ -40,188 +37,208 @@ class EsibotSensors(Node):
     def __init__(self):
         super().__init__("radar_node")
         self.log = get_logger(node=self)
+
         self._scan_pub = self.create_publisher(LaserScan, "/scan", 10)
         self._joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
 
-        # ── Scan geometry — matches URDF servo_joint limits (+/- pi/2) ─────
-        #   angle_min = -pi/2 -> right
-        #   angle_max = +pi/2 -> left
-        #   center    = 0     -> forward
-        self.angle_min = -math.pi / 2  # -90 deg
-        self.angle_max = math.pi / 2  # +90 deg
-        self.angle_increment = math.radians(10)  # 10° per step → 19 readings
+        # ── Géométrie du scan ────────────────────────────────────────────────
+        self.angle_min = -math.pi / 2   # -90° → droite
+        self.angle_max =  math.pi / 2   # +90° → gauche
+        self.angle_increment = math.radians(10)  # 10°/step → 19 mesures
 
-        # ── HC-SR04 valid range (datasheet) ─────────────────────────────────
-        self.range_min = 0.02  # 2 cm
-        self.range_max = 4.00  # 400 cm
+        # ── Plage valide HC-SR04 (datasheet) ────────────────────────────────
+        self.range_min = 0.02   # 2 cm
+        self.range_max = 4.00   # 400 cm
 
-        # ── GPIO pin assignments (overridable from launch file / params) ────
-        self.declare_parameter("servo_pin", 17)
-        self.declare_parameter("trig_pin", 27)
-        self.declare_parameter("echo_pin", 22)
-        self.declare_parameter("sweep_period", 3.0)
-        self.declare_parameter("sim_mode", False)
+        # ── Paramètres ROS ───────────────────────────────────────────────────
+        # Pins RPi (BCM) — conformes au wiring diagram
+        self.declare_parameter("trig_pin",     23)   # RPi Pin 16 → HC-SR04 TRIG
+        self.declare_parameter("echo_pin",     24)   # RPi Pin 18 → diviseur → HC-SR04 ECHO
+        self.declare_parameter("sweep_period",  3.0)
+        self.declare_parameter("sim_mode",     False)
 
-        self.servo_pin = self.get_parameter("servo_pin").value
-        self.trig_pin = self.get_parameter("trig_pin").value
-        self.echo_pin = self.get_parameter("echo_pin").value
-        # Keep parameter for compatibility; preserve previous fixed-timer behavior.
+        # Port UART vers ESP32-CAM
+        self.declare_parameter("uart_port",  "/dev/serial0")
+        self.declare_parameter("uart_baud",   115200)
+
+        self.trig_pin     = self.get_parameter("trig_pin").value
+        self.echo_pin     = self.get_parameter("echo_pin").value
         self._sweep_period = float(self.get_parameter("sweep_period").value)
+        uart_port         = self.get_parameter("uart_port").value
+        uart_baud         = self.get_parameter("uart_baud").value
 
+        # ── Init GPIO RPi (TRIG + ECHO seulement) ───────────────────────────
         if HARDWARE_AVAILABLE:
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.servo_pin, GPIO.OUT)
             GPIO.setup(self.trig_pin, GPIO.OUT)
             GPIO.setup(self.echo_pin, GPIO.IN)
-            # 50 Hz PWM — standard for SG90
-            self.pwm_servo = GPIO.PWM(self.servo_pin, 50)
-            self.pwm_servo.start(0)
+            GPIO.output(self.trig_pin, False)
+            self.log.info(
+                f"GPIO initialisé — TRIG=GPIO{self.trig_pin}, "
+                f"ECHO=GPIO{self.echo_pin} (via diviseur 1.2kΩ/1.5kΩ)"
+            )
         else:
             self.log.warning(
-                "RPi.GPIO not found — running in SIMULATION/MOCK mode. "
-                f"({GPIO_IMPORT_ERROR})"
-            )
-            self.log.info(
-                "No hardware detected. Publishing simulated scan data."
+                f"RPi.GPIO introuvable — mode SIMULATION actif. ({GPIO_IMPORT_ERROR})"
             )
 
-        # ── Re-entrancy guard ────────────────────────────────────────────────
-        # fires, skip that tick rather than launching a second blocking sweep.
+        # ── UART vers ESP32-CAM (contrôle MG996R) ───────────────────────────
+        self._uart = None
+        if HARDWARE_AVAILABLE:
+            try:
+                self._uart = serial.Serial(uart_port, uart_baud, timeout=1.0, write_timeout=1.0)
+                    # Flush des buffers UART
+                self._uart.reset_input_buffer()
+                self._uart.reset_output_buffer()
+                self.log.info(f"UART ouvert : {uart_port} @ {uart_baud} baud")
+            except Exception as exc:
+                self.log.error(
+                    f"Impossible d'ouvrir le port UART {uart_port} : {exc}. "
+                    "Le servo ne bougera pas."
+                )
+
+        # ── Garde anti-réentrance ────────────────────────────────────────────
         self._scanning = False
 
         # ── Timer ────────────────────────────────────────────────────────────
-        # Worst-case sweep: 19 steps x (0.10 s settle + 0.01 s measure)
-        # self.timer = self.create_timer(sweep_period, self.timer_callback) for real hardware
-        self.timer = self.create_timer(3.0, self.timer_callback)
+        self.timer = self.create_timer(self._sweep_period, self.timer_callback)
 
     # ── Timer callback ───────────────────────────────────────────────────────
 
     def timer_callback(self):
-        # skip this tick if the previous sweep hasn't finished.
         if self._scanning:
             self.log.warning(
-                "Previous sweep still running — skipping this tick. "
-                "Consider increasing the timer period."
+                "Sweep précédent encore en cours — tick ignoré. "
+                "Augmentez sweep_period si ce message est fréquent."
             )
             return
         self.publish_scan()
 
-    # ── Main scan publisher ──────────────────────────────────────────────────
+    # ── Publication du scan ──────────────────────────────────────────────────
 
     def publish_scan(self):
         self._scanning = True
         sweep_start = time.time()
 
         msg = LaserScan()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.stamp    = self.get_clock().now().to_msg()
         msg.header.frame_id = "laser_link"
-        msg.angle_min = self.angle_min
-        msg.angle_max = self.angle_max
+        msg.angle_min       = self.angle_min
+        msg.angle_max       = self.angle_max
         msg.angle_increment = self.angle_increment
-        msg.time_increment = 0.0  # unknown per-step timing
-        msg.range_min = self.range_min
-        msg.range_max = self.range_max
+        msg.time_increment  = 0.0
+        msg.range_min       = self.range_min
+        msg.range_max       = self.range_max
 
-        # ── Build ranges array ───────────────────────────────────────────────
         ranges = []
-        angle = self.angle_min
+        angle  = self.angle_min
 
-        while angle <= self.angle_max + 1e-9:  # +epsilon avoids float drift
+        while angle <= self.angle_max + 1e-9:
 
-            js = JointState()
+            # Publie la position articulaire (pour RViz / URDF)
+            js            = JointState()
             js.header.stamp = self.get_clock().now().to_msg()
-            js.name = ["servo_joint"]
-            js.position = [angle]
+            js.name       = ["servo_joint"]
+            js.position   = [angle]
             self._joint_state_pub.publish(js)
 
             raw = self.read_distance(angle)
 
-            # clamp invalid readings to range_max + 1.0 per REP-117
-            if raw < self.range_min or raw > self.range_max:
-                dist = self.range_max + 1.0
-            else:
-                dist = raw
-
+            dist = raw if self.range_min <= raw <= self.range_max else self.range_max + 1.0
             ranges.append(dist)
             angle += self.angle_increment
 
-        # compute actual sweep duration and set scan_time
-        sweep_duration = time.time() - sweep_start
-        msg.scan_time = float(sweep_duration)
-        msg.ranges = ranges
-
-        msg.time_increment = float(sweep_duration) / (len(ranges) - 1)
+        sweep_duration      = time.time() - sweep_start
+        msg.scan_time       = float(sweep_duration)
+        msg.ranges          = ranges
+        msg.time_increment  = float(sweep_duration) / max(len(ranges) - 1, 1)
 
         self._scan_pub.publish(msg)
         self.log.info(
-            f"Published LaserScan: {len(ranges)} ranges, "
+            f"LaserScan publié : {len(ranges)} mesures, "
             f"sweep_time={sweep_duration:.3f}s, "
             f"ranges={[f'{r:.2f}' for r in ranges]}"
         )
-
         self._scanning = False
 
-    # ── Hardware / simulation abstraction ───────────────────────────────────
+    # ── Abstraction hardware / simulation ────────────────────────────────────
 
     def read_distance(self, angle: float) -> float:
         """
-        Return distance in meters at the given servo angle (radians).
-        On real hardware: move servo then trigger HC-SR04.
-        In simulation:   return a fake wall reading with noise.
+        1. Envoie la consigne d'angle au ESP32 via UART → ESP32 pilote le MG996R.
+        2. Attend la stabilisation du servo (100 ms).
+        3. Déclenche le HC-SR04 depuis le RPi et retourne la distance (m).
         """
         if HARDWARE_AVAILABLE:
-            self.set_servo_angle(angle)
+            self._send_servo_angle(angle)   # ESP32 bouge le MG996R
+            time.sleep(0.20)                # attente stabilisation (10° step)
             return self.hc_sr04_distance()
         else:
-            # Simulate a flat wall ~1 m ahead with small Gaussian noise
-            time.sleep(0.01)  # mimic measurement delay
+            time.sleep(0.01)
             return 1.0 + random.gauss(0.0, 0.02)
 
-    # ── Hardware helpers ─────────────────────────────────────────────────────
+    # ── Commande servo via UART (MG996R piloté par ESP32-CAM GPIO15) ─────────
 
-    def set_servo_angle(self, angle: float):
+    def _send_servo_angle(self, angle: float):
         """
-        Move SG90 to the requested angle (radians, ±π/2 convention).
+        Envoie une commande texte simple au ESP32 :
+          "SERVO <angle_deg>\n"
+        Exemples : "SERVO -90\n", "SERVO 0\n", "SERVO 45\n"
+
+        Le firmware ESP32 doit parser cette commande et générer le PWM
+        sur GPIO15 (50 Hz, 1–2 ms pulse width, pull-down 10kΩ hardware).
         """
-        angle_deg = math.degrees(angle) + 90.0  # shift: −90..+90 → 0..180
-        duty = 2.0 + (angle_deg / 18.0)
-        self.pwm_servo.ChangeDutyCycle(duty)
-        time.sleep(0.1)  # 100 ms settle (conservative for 10° steps)
+        if self._uart is None:
+            self.log.warning("UART non disponible — servo non commandé.")
+            return
+
+        angle_deg = round(math.degrees(angle))
+        cmd       = f"SERVO:{angle_deg}\n"
+        try:
+            self._uart.write(cmd.encode("ascii"))
+            self.log.debug(f"UART → ESP32 : {cmd.strip()}")
+            ack = self._uart.readline().decode().strip()
+
+            if ack != "OK":
+              self.log.warning(f"ACK invalide ESP32 : '{ack}'") 
+        except Exception as exc:
+            self.log.error(f"Erreur écriture UART : {exc}")
+
+    # ── HC-SR04 (branché directement sur le RPi) ─────────────────────────────
 
     def hc_sr04_distance(self) -> float:
         """
-        Trigger HC-SR04 and return distance in meters.
-        Returns range_max + 1.0 if echo never arrives (timeout guard).
+        TRIG : GPIO23 (RPi Pin 16) — sortie 3.3V, suffisant pour déclencher.
+        ECHO : GPIO24 (RPi Pin 18) via diviseur R1=1.2kΩ / R2=1.5kΩ → 2.78V ✓
+        Retourne la distance en mètres, ou range_max + 1.0 en cas de timeout.
         """
-        # Reset sensor
+        # Reset TRIG
         GPIO.output(self.trig_pin, False)
         time.sleep(0.01)
 
-        # 10 µs trigger pulse
+        # Impulsion TRIG 10 µs
         GPIO.output(self.trig_pin, True)
         time.sleep(0.00001)
         GPIO.output(self.trig_pin, False)
 
-        # Wait for echo to go HIGH (rising edge) — with timeout.
-        timeout = time.time() + 0.05  # 50 ms timeout
+        # Attente front montant ECHO (rising edge)
+        timeout = time.time() + 0.05
         while GPIO.input(self.echo_pin) == 0:
             if time.time() > timeout:
-                self.log.warning("HC-SR04: echo start timeout")
+                self.log.warning("HC-SR04 : timeout front montant ECHO")
                 return self.range_max + 1.0
-        start = time.time()  # rising edge — captured once, after loop exits
+        start = time.time()
 
-        # Wait for echo to go LOW (falling edge) — with timeout.
+        # Attente front descendant ECHO (falling edge)
         timeout = time.time() + 0.05
         while GPIO.input(self.echo_pin) == 1:
             if time.time() > timeout:
-                self.log.warning("HC-SR04: echo end timeout")
+                self.log.warning("HC-SR04 : timeout front descendant ECHO")
                 return self.range_max + 1.0
-        end = time.time()  # falling edge — captured once, after loop exits
+        end = time.time()
 
-        # Distance = (time * speed_of_sound) / 2
-        # Speed of sound ≈ 343 m/s at 20°C
-        distance = ((end - start) * 343.0) / 2.0
-        return distance
+        # Distance = (durée × vitesse_son) / 2  [343 m/s à 20°C]
+        return ((end - start) * 343.0) / 2.0
 
 
 def main(args=None):
@@ -234,11 +251,12 @@ def main(args=None):
         pass
     finally:
         if HARDWARE_AVAILABLE:
-            node.pwm_servo.stop()
+            if node._uart:
+                node._uart.close()
             GPIO.cleanup()
         try:
             node.destroy_node()
-        except KeyboardInterrupt:
+        except Exception:
             pass
         try:
             if rclpy.ok():
