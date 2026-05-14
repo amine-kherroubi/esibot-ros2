@@ -54,8 +54,8 @@ def generate_launch_description():
 
     declare_serial_port = DeclareLaunchArgument(
         "serial_port",
-        default_value="/dev/ttyUSB0",
-        description="Serial port connected to the ESP32 (e.g. /dev/ttyUSB0)",
+        default_value="/dev/ttyS0",
+        description="Serial port connected to the ESP32 (e.g. /dev/ttyS0)",
     )
 
     declare_baud_rate = DeclareLaunchArgument(

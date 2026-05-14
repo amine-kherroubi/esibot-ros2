@@ -44,7 +44,7 @@ def generate_launch_description():
                 output="screen",
                 emulate_tty=True,
             ),
-            # ── Compressed republish ───────────────────────────────────────
+            # ── Compressed republish → /camera/compressed ─────────────────
             Node(
                 package="image_transport",
                 executable="republish",

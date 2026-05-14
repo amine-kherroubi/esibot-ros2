@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CameraInfo, Image
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image
 from std_msgs.msg import String
 
 from esibot_logging import get_logger, setup_logging
@@ -70,9 +70,10 @@ class CameraStreamNode(Node):
             )
 
         # ── Publishers ───────────────────────────────────────────────────────
-        self._image_pub = self.create_publisher(Image, "/camera/image_raw", 10)
-        self._info_pub = self.create_publisher(CameraInfo, "/camera/camera_info", 10)
-        self._status_pub = self.create_publisher(String, "/camera/status", 10)
+        self._image_pub      = self.create_publisher(Image,           "/camera/image_raw",                   10)
+        self._info_pub       = self.create_publisher(CameraInfo,      "/camera/camera_info",                 10)
+        self._status_pub     = self.create_publisher(String,          "/camera/status",                      10)
+        self._compressed_pub = self.create_publisher(CompressedImage, "/camera/image_annotated/compressed",  10)
 
         # ── Publish timer (ROS executor thread) ──────────────────────────────
         self.pub_timer = self.create_timer(1.0 / self.publish_rate, self.publish_frame)
@@ -139,18 +140,9 @@ class CameraStreamNode(Node):
                 self.log.info("ESP32-CAM connected.")
                 self._publish_status("CONNECTED")
             except urllib.error.URLError as e:
-                self.log.warning(f"ESP32 unreachable: {e.reason}")
+                self.log.warning(f"ESP32 unreachable: {e.reason} — retrying in {self.reconnect_delay}s...")
                 self._publish_status(f"DISCONNECTED: {e.reason}")
                 self._stream = None
-                if not self.sim_mode:
-                    self.sim_mode = True
-                    self.log.warning(
-                        "ESP32 unreachable — switching to SIM mode."
-                    )
-                    self._publish_status("SIM_MODE")
-                    return self._make_sim_frame()
-
-                self.log.info(f"Reconnecting in {self.reconnect_delay}s...")
                 time.sleep(self.reconnect_delay)
                 return None
 
@@ -367,6 +359,16 @@ class CameraStreamNode(Node):
         msg.step = frame.shape[1] * 3
         msg.data = frame.tobytes()
         self._image_pub.publish(msg)
+
+        # ── CompressedImage → /camera/image_annotated/compressed ────────────
+        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if ok:
+            cmsg = CompressedImage()
+            cmsg.header.stamp = stamp
+            cmsg.header.frame_id = self.camera_frame
+            cmsg.format = "jpeg"
+            cmsg.data = buf.tobytes()
+            self._compressed_pub.publish(cmsg)
 
         self._publish_camera_info(stamp)
 

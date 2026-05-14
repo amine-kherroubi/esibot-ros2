@@ -82,7 +82,7 @@ class EsibotDriver(Node):
         super().__init__('esibot_driver')
 
         # ── ROS2 parameters ───────────────────────────────────────────────────
-        self.declare_parameter('serial_port',    '/dev/ttyAMA0')
+        self.declare_parameter('serial_port',    '/dev/ttyS0')
         self.declare_parameter('baud_rate',      115200)
         self.declare_parameter('odom_frame',     'odom')
         self.declare_parameter('base_frame',     'base_footprint')
