@@ -180,29 +180,31 @@ class EsibotSensors(Node):
     # ── Commande servo via UART (MG996R piloté par ESP32-CAM GPIO15) ─────────
 
     def _send_servo_angle(self, angle: float):
-        """
-        Envoie une commande texte simple au ESP32 :
-          "SERVO <angle_deg>\n"
-        Exemples : "SERVO -90\n", "SERVO 0\n", "SERVO 45\n"
-
-        Le firmware ESP32 doit parser cette commande et générer le PWM
-        sur GPIO15 (50 Hz, 1–2 ms pulse width, pull-down 10kΩ hardware).
-        """
-        if self._uart is None:
-            self.log.warning("UART non disponible — servo non commandé.")
-            return
-
-        angle_deg = round(math.degrees(angle))
-        cmd       = f"SERVO:{angle_deg}\n"
-        try:
-            self._uart.write(cmd.encode("ascii"))
-            self.log.debug(f"UART → ESP32 : {cmd.strip()}")
-            ack = self._uart.readline().decode().strip()
-
-            if ack != "OK":
-              self.log.warning(f"ACK invalide ESP32 : '{ack}'") 
-        except Exception as exc:
-            self.log.error(f"Erreur écriture UART : {exc}")
+      if self._uart is None:
+          self.log.warning("UART non disponible — servo non commandé.")
+          return
+  
+      # BUG:  angle_deg = round(math.degrees(angle))
+      # FIX: offset by +90 to convert ROS [-90°,+90°] → ESP32 [0°,180°]
+      angle_deg = round(math.degrees(angle)) + 90   # ← THIS is the fix
+      cmd = f"SERVO:{angle_deg}\n"
+  
+      try:
+          self._uart.write(cmd.encode("ascii"))
+          self.log.debug(f"UART → ESP32 : {cmd.strip()}")
+  
+          # Also fix the BAT: race condition while here
+          while True:
+              ack = self._uart.readline().decode().strip()
+              if ack == "OK":
+                  break
+              elif ack.startswith("BAT:"):
+                  continue   # discard battery report, keep waiting
+              else:
+                  self.log.warning(f"ACK invalide ESP32 : '{ack}'")
+                  break
+      except Exception as exc:
+          self.log.error(f"Erreur écriture UART : {exc}")
 
     # ── HC-SR04 (branché directement sur le RPi) ─────────────────────────────
 
