@@ -58,7 +58,7 @@ class EsibotSensors(Node):
         self.declare_parameter("sim_mode",     False)
 
         # Port UART vers ESP32-CAM
-        self.declare_parameter("uart_port",  "/dev/serial0")
+        self.declare_parameter("uart_port",  "/dev/ttyS0")
         self.declare_parameter("uart_baud",   115200)
 
         self.trig_pin     = self.get_parameter("trig_pin").value
