@@ -1,6 +1,67 @@
 # esibot_navigation
 
-ROS 2 Jazzy navigation configuration for EsiBot. It launches Nav2 with EsiBot-specific settings (map, parameters, and launch wiring). This package does not implement custom nodes or algorithms; it only configures the Nav2 stack for the robot or simulation.
+`esibot_navigation` is the Nav2 configuration package for this repository.
+It provides launch wiring, Nav2 parameters, and map assets.
+
+## Scope in this repository
+
+In-repo files:
+
+- `launch/nav2.launch.py`
+- `config/nav2_params.yaml`
+- `maps/esibot_map.yaml`
+- `maps/esibot_map.pgm`
+
+External runtime dependency (not vendored here):
+
+- `nav2_bringup` package share, including `launch/bringup_launch.py`
+
+`launch/nav2.launch.py` resolves that external path with `get_package_share_directory("nav2_bringup")` and includes `launch/bringup_launch.py` from the installed package.
+
+## Declared package dependencies
+
+From `package.xml`:
+
+- `ament_index_python`
+- `launch`
+- `launch_ros`
+- `nav2_common`
+- `nav2_bringup`
+- `opennav_docking`
+- `rviz2`
+
+This package is built with `ament_cmake` and installs only `launch`, `config`, and `maps` directories.
+
+## Launch behavior (`launch/nav2.launch.py`)
+
+The launch file:
+
+1. Sets default paths for map and parameter files from this package share.
+2. Declares launch arguments:
+   - `map`
+   - `params_file`
+   - `scan_topic`
+   - `use_sim_time`
+   - `autostart`
+   - `use_composition`
+   - `use_respawn`
+   - `use_rviz`
+   - `rviz_config`
+3. Rewrites selected Nav2 parameter keys with `RewrittenYaml` so `scan_topic` can be overridden at launch time.
+4. Includes upstream Nav2 bringup with `slam:=False` and `use_localization:=True`.
+5. Optionally launches RViz.
+
+## Runtime interfaces expected by this configuration
+
+- TF frames used in `config/nav2_params.yaml` include `map`, `odom`, and `base_footprint`.
+- Default scan topic in this package is `scan`.
+- `scan_topic` can be overridden (for example to `ultrasound_raw`).
+- `use_sim_time` defaults to `false` in `launch/nav2.launch.py`.
+
+Related producers in this repository:
+
+- `esibot_sensors/esibot_sensors/radar_node.py` publishes `/scan`.
+- `esibot_gazebo/launch/sim.launch.py` bridges `/ultrasound_raw` and `/clock` from Gazebo.
 
 ## Build
 
@@ -10,21 +71,21 @@ colcon build --symlink-install --packages-select esibot_navigation
 source ~/robot_ws/install/setup.bash
 ```
 
-## Run
+## Run examples
 
-Real robot (default settings assume LaserScan topic `scan`):
-
-```bash
-ros2 launch esibot_navigation nav2.launch.py
-```
-
-Simulation (Gazebo publishes `ultrasound_raw`):
+Hardware-oriented run:
 
 ```bash
-ros2 launch esibot_navigation nav2.launch.py scan_topic:=ultrasound_raw
+ros2 launch esibot_navigation nav2.launch.py use_sim_time:=false scan_topic:=scan
 ```
 
-Override map or params:
+Gazebo-oriented run:
+
+```bash
+ros2 launch esibot_navigation nav2.launch.py use_sim_time:=true scan_topic:=ultrasound_raw
+```
+
+Override map and params:
 
 ```bash
 ros2 launch esibot_navigation nav2.launch.py \
@@ -32,33 +93,15 @@ ros2 launch esibot_navigation nav2.launch.py \
   params_file:=/absolute/path/to/nav2_params.yaml
 ```
 
-## Launch Arguments
+## Verification commands (target machine)
 
-- `map`: full path to the map YAML
-- `params_file`: full path to `nav2_params.yaml`
-- `scan_topic`: LaserScan topic used by AMCL and costmaps
-- `use_sim_time`: `True` for simulation (`/clock`), `False` for real robot
-- `use_rviz`: launch RViz
-- `rviz_config`: RViz config path (defaults to Nav2 default view)
+```bash
+# External dependency present
+ros2 pkg prefix nav2_bringup
 
-## Simulation vs. real robot
+# bringup_launch.py present in installed package share
+python3 -c "import os,glob; from ament_index_python.packages import get_package_share_directory as g; d=g('nav2_bringup'); print(d); print(glob.glob(os.path.join(d,'launch','bringup_launch.py')))"
 
-| Setting        | Simulation       | Real robot | Rationale                                                                                                          |
-| -------------- | ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| `use_sim_time` | `True`           | `False`    | Gazebo publishes `/clock`. If `use_sim_time` is `True` on a real robot, nodes wait on `/clock` and appear stalled. |
-| `scan_topic`   | `ultrasound_raw` | `scan`     | The simulated sensor publishes a different LaserScan topic than the real robot.                                    |
-
-## Caveats and Rationale
-
-1. `use_sim_time` defaults to `true` in `launch/nav2.launch.py`. On real hardware, set `use_sim_time:=false` or Nav2 will not advance time and the stack will appear frozen.
-2. `scan_topic` must match the actual LaserScan source. AMCL, the local costmap, the global costmap, and the collision monitor all consume this topic. If it is wrong, localization will not converge and the costmaps will be empty.
-3. Frame IDs assume `map -> odom -> base_footprint`. If your robot uses `base_link` or another base frame, update `amcl.base_frame_id`, `bt_navigator.robot_base_frame`, `local_costmap.robot_base_frame`, and `global_costmap.robot_base_frame` in `config/nav2_params.yaml`. A mismatch causes TF errors and Nav2 will fail to localize or plan.
-4. `collision_monitor.footprint_topic` is relative (`local_costmap/published_footprint`) to stay namespace-safe. If you intentionally use absolute topics, adjust it to match your graph.
-5. The local costmap defines a `static_layer` block but does not list it in `local_costmap.plugins`, so that block is ignored. Add `static_layer` to the plugin list if you want static map data in the local costmap.
-6. The map YAML references the image with a relative path. If you move the YAML or the image, update `maps/esibot_map.yaml` or the map server will fail to load the map.
-
-## Package Layout
-
-- `launch/nav2.launch.py`: wraps `nav2_bringup` and injects map, params, and scan topic
-- `config/nav2_params.yaml`: Nav2 configuration
-- `maps/esibot_map.yaml` and `maps/esibot_map.pgm`: static map
+# This package declares nav2_bringup dependency
+ros2 pkg xml esibot_navigation | grep nav2_bringup
+```
