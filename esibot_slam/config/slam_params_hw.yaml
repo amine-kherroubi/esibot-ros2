@@ -6,9 +6,9 @@
 # Key differences compared to simulation (slam_params_sim.yaml):
 #   • use_sim_time: false      → wall clock (no Gazebo running)
 #   • scan_topic: /scan        → radar_node (esibot_sensors) publishes here directly
-#   • minimum_time_interval: 0.5 s → HC-SR04 radar is slow (1 full sweep per 0.5–1 s)
+#   • minimum_time_interval: 2.5 s → HC-SR04 on MG996R sweeps ±100° in ~3 s
 #   • map_update_interval: 5.0 s  → save CPU resources on the Raspberry Pi 4
-#   • transform_timeout: 1.0 s    → UART or WiFi link may introduce latency
+#   • transform_timeout: 1.0 s    → accounts for potential WiFi latency
 #
 # Algorithm: online_async — recommended for slow, irregular sensors.
 #   Enforced by the launch file executable: async_slam_toolbox_node.
@@ -66,14 +66,14 @@ slam_toolbox:
     max_laser_range: 4.0
 
     # ── Scan throttling ─────────────────────────────────────────────────────
-    # 1 = process every scan. The radar is already slow (0.5–2 Hz),
+    # 1 = process every scan. The radar is already slow (~0.33 Hz),
     # so every measurement counts — do not skip any.
     throttle_scans: 1
 
     # ── Minimum time between processed scans ────────────────────────────────
-    # The HC-SR04 on SG90 completes one 180° sweep in 0.5–1 s.
-    # Setting 0.5 s avoids re-processing scans before the servo finishes a sweep.
-    minimum_time_interval: 0.5
+    # MG996R sweeps ±100° (21 steps × 150 ms) in ~3 s.
+    # 2.5 s avoids re-processing a stale queued scan while keeping every sweep.
+    minimum_time_interval: 2.5
 
     # ── Minimum robot displacement to trigger SLAM update ───────────────────
     # Keep values low because the robot moves slowly with DC motors.
@@ -87,10 +87,11 @@ slam_toolbox:
     # ── Scan buffer ─────────────────────────────────────────────────────────
     # Reduce scan_buffer_size to 5 if running on the 2 GB RAM model.
     scan_buffer_size: 10
-    scan_buffer_maximum_scan_distance: 10.0
+    scan_buffer_maximum_scan_distance: 4.0
 
     # ── Fine matching parameters ────────────────────────────────────────────
-    link_match_minimum_response_fine: 0.1
+    # Lowered to 0.05 for our sparse 21-point scan (21 beams vs 360+ for a real lidar).
+    link_match_minimum_response_fine: 0.05
     distance_variance_penalty: 0.5
     angle_variance_penalty: 1.0
 

@@ -201,12 +201,12 @@ class EsibotSensors(Node):
     def hc_sr04_distance(self) -> float:
         """
         TRIG : GPIO23 (RPi Pin 16) — sortie 3.3V, suffisant pour déclencher.
-        ECHO : GPIO24 (RPi Pin 18) via diviseur R1=1.2kΩ / R2=1.5kΩ → 2.78V ✓
+        ECHO : GPIO25 (RPi Pin 22) via diviseur R1=1.2kΩ / R2=1.5kΩ → 2.78V ✓
         Retourne la distance en mètres, ou range_max + 1.0 en cas de timeout.
         """
-        # Reset TRIG
+        # Reset TRIG — 60ms recommended by HC-SR04 datasheet between measurements
         GPIO.output(self.trig_pin, False)
-        time.sleep(0.01)
+        time.sleep(0.06)
 
         # Impulsion TRIG 10 µs
         GPIO.output(self.trig_pin, True)
@@ -214,15 +214,15 @@ class EsibotSensors(Node):
         GPIO.output(self.trig_pin, False)
 
         # Attente front montant ECHO (rising edge)
-        timeout = time.time() + 0.05
+        timeout = time.time() + 0.10
         while GPIO.input(self.echo_pin) == 0:
             if time.time() > timeout:
                 self.log.warning("HC-SR04 : timeout front montant ECHO")
                 return self.range_max + 1.0
         start = time.time()
 
-        # Attente front descendant ECHO (falling edge)
-        timeout = time.time() + 0.05
+        # Attente front descendant ECHO (falling edge) — 200ms for cheap clones
+        timeout = time.time() + 0.20
         while GPIO.input(self.echo_pin) == 1:
             if time.time() > timeout:
                 self.log.warning("HC-SR04 : timeout front descendant ECHO")

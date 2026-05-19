@@ -22,13 +22,13 @@ def generate_launch_description():
 
     trig_pin_arg = DeclareLaunchArgument(
         "trig_pin",
-        default_value="27",
+        default_value="23",
         description="BCM GPIO pin number for HC-SR04 TRIG",
     )
 
     echo_pin_arg = DeclareLaunchArgument(
         "echo_pin",
-        default_value="22",
+        default_value="25",
         description="BCM GPIO pin number for HC-SR04 ECHO",
     )
 

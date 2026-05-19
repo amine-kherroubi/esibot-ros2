@@ -131,19 +131,6 @@ def generate_launch_description():
         condition=is_sim,
     )
 
-    # ── [2] static_tf_laser_link — HARDWARE ONLY ────────────────────────────
-
-    static_tf_laser_link = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='static_tf_laser_link',
-        output='screen',
-        # Zero transform: laser_link has the same pose as itself.
-        # args: x y z yaw pitch roll parent_frame child_frame
-        arguments=['0', '0', '0', '0', '0', '0', 'base_footprint', 'laser_link'],
-        condition=is_hw,
-    )
-
     # ── [3a] async_slam_toolbox_node — SIMULATION MODE ───────────────────────
     #
     # Executable: async_slam_toolbox_node — this is the online_async solver.
@@ -317,7 +304,6 @@ def generate_launch_description():
             '  EsiBot SLAM - HARDWARE MODE (Raspberry Pi 4)\n',
             '=======================================================\n',
             '  Nodes:\n',
-            '    • static_tf_laser_link     : laser_link TF fallback\n',
             '    • async_slam_toolbox_node  (LifecycleNode, online_async)\n',
             '      lifecycle: CONFIGURE -> ACTIVATE  (event-driven)\n',
             '  Config : slam_params_hw.yaml  |  use_sim_time: false\n',
@@ -345,7 +331,6 @@ def generate_launch_description():
             log_hw,
             # Topic/TF fixes
             relay_node,  # sim only: /ultrasound_raw -> /scan
-            static_tf_laser_link,  # hw only:  laser_link TF fallback
             # slam_toolbox lifecycle nodes (only one active depending on mode)
             slam_toolbox_sim,
             slam_toolbox_hw,
