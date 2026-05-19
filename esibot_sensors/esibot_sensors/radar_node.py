@@ -86,7 +86,7 @@ class EsibotSensors(Node):
         self._uart = None
         if HARDWARE_AVAILABLE:
             try:
-                self._uart = serial.Serial(uart_port, uart_baud, timeout=1.0, write_timeout=1.0)
+                self._uart = serial.Serial(uart_port, uart_baud, timeout=0.15, write_timeout=1.0)
                     # Flush des buffers UART
                 self._uart.reset_input_buffer()
                 self._uart.reset_output_buffer()
@@ -170,8 +170,12 @@ class EsibotSensors(Node):
         3. Déclenche le HC-SR04 depuis le RPi et retourne la distance (m).
         """
         if HARDWARE_AVAILABLE:
-            self._send_servo_angle(angle)   # ESP32 bouge le MG996R
-            time.sleep(0.20)                # attente stabilisation (10° step)
+            t_send = time.time()
+            self._send_servo_angle(angle)              # ESP32 bouge le MG996R
+            elapsed = time.time() - t_send
+            remaining = max(0.0, 0.20 - elapsed)       # guarantee 200ms from send
+            if remaining > 0:
+                time.sleep(remaining)
             return self.hc_sr04_distance()
         else:
             time.sleep(0.01)
@@ -180,31 +184,30 @@ class EsibotSensors(Node):
     # ── Commande servo via UART (MG996R piloté par ESP32-CAM GPIO15) ─────────
 
     def _send_servo_angle(self, angle: float):
-      if self._uart is None:
-          self.log.warning("UART non disponible — servo non commandé.")
-          return
-  
-      # BUG:  angle_deg = round(math.degrees(angle))
-      # FIX: offset by +90 to convert ROS [-90°,+90°] → ESP32 [0°,180°]
-      angle_deg = round(math.degrees(angle)) + 90   # ← THIS is the fix
-      cmd = f"SERVO:{angle_deg}\n"
-  
-      try:
-          self._uart.write(cmd.encode("ascii"))
-          self.log.debug(f"UART → ESP32 : {cmd.strip()}")
-  
-          # Also fix the BAT: race condition while here
-          while True:
-              ack = self._uart.readline().decode().strip()
-              if ack == "OK":
-                  break
-              elif ack.startswith("BAT:"):
-                  continue   # discard battery report, keep waiting
-              else:
-                  self.log.warning(f"ACK invalide ESP32 : '{ack}'")
-                  break
-      except Exception as exc:
-          self.log.error(f"Erreur écriture UART : {exc}")
+        if self._uart is None:
+            self.log.warning("UART non disponible — servo non commandé.")
+            return
+
+        angle_deg = round(math.degrees(angle)) + 90
+        cmd = f"SERVO:{angle_deg}\n"
+
+        try:
+            self._uart.reset_input_buffer()       # discard stale BAT telemetry
+            self._uart.write(cmd.encode("ascii"))
+            self.log.debug(f"UART → ESP32 : {cmd.strip()}")
+
+            deadline = time.time() + 0.15         # wait at most 150 ms for OK
+            while time.time() < deadline:
+                ack = self._uart.readline().decode().strip()
+                if ack == "OK":
+                    return
+                elif ack.startswith("BAT:"):
+                    continue
+                elif ack:
+                    self.log.warning(f"ACK invalide ESP32 : '{ack}'")
+                    return
+        except Exception as exc:
+            self.log.error(f"Erreur écriture UART : {exc}")
 
     # ── HC-SR04 (branché directement sur le RPi) ─────────────────────────────
 
