@@ -41,9 +41,9 @@ class EsibotSensors(Node):
         self._joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
 
         # ── Géométrie du scan ────────────────────────────────────────────────
-        self.angle_min = -math.pi / 2   # -90° → droite
-        self.angle_max =  math.pi / 2   # +90° → gauche
-        self.angle_increment = math.radians(10)  # 10°/step → 19 mesures
+        self.angle_min = -math.radians(100)  # -100° → droite
+        self.angle_max =  math.radians(100)  # +100° → gauche
+        self.angle_increment = math.radians(10)  # 10°/step → 21 mesures
 
         # ── Plage valide HC-SR04 (datasheet) ────────────────────────────────
         self.range_min = 0.02   # 2 cm
@@ -52,7 +52,7 @@ class EsibotSensors(Node):
         # ── Paramètres ROS ───────────────────────────────────────────────────
         self.declare_parameter("trig_pin",     23)   # RPi Pin 16 → HC-SR04 TRIG
         self.declare_parameter("echo_pin",     25)   # RPi Pin 22 → diviseur → HC-SR04 ECHO
-        self.declare_parameter("sweep_period",  3.0)
+        self.declare_parameter("sweep_period",  4.0)
         self.declare_parameter("sim_mode",     False)
 
         self.trig_pin      = self.get_parameter("trig_pin").value
@@ -85,6 +85,9 @@ class EsibotSensors(Node):
             except Exception as exc:
                 self._servo_pwm = None
                 self.log.error(f"Erreur init servo PWM : {exc}")
+
+        # ── Ping-pong sweep direction (+1 = min→max, -1 = max→min) ─────────────
+        self._sweep_dir = 1
 
         # ── Garde anti-réentrance ────────────────────────────────────────────
         self._scanning = False
@@ -119,12 +122,17 @@ class EsibotSensors(Node):
         msg.range_min       = self.range_min
         msg.range_max       = self.range_max
 
-        ranges = []
-        angle  = self.angle_min
+        # Build angle list then order by sweep direction (ping-pong)
+        angles = []
+        a = self.angle_min
+        while a <= self.angle_max + 1e-9:
+            angles.append(a)
+            a += self.angle_increment
+        if self._sweep_dir < 0:
+            angles = list(reversed(angles))
 
-        while angle <= self.angle_max + 1e-9:
-
-            # Publie la position articulaire (pour RViz / URDF)
+        ranges_ordered = []
+        for angle in angles:
             js            = JointState()
             js.header.stamp = self.get_clock().now().to_msg()
             js.name       = ["servo_joint"]
@@ -132,10 +140,12 @@ class EsibotSensors(Node):
             self._joint_state_pub.publish(js)
 
             raw = self.read_distance(angle)
-
             dist = raw if self.range_min <= raw <= self.range_max else self.range_max + 1.0
-            ranges.append(dist)
-            angle += self.angle_increment
+            ranges_ordered.append(dist)
+
+        # LaserScan always published min→max; reverse if backward sweep
+        ranges = list(reversed(ranges_ordered)) if self._sweep_dir < 0 else ranges_ordered
+        self._sweep_dir *= -1  # flip for next sweep
 
         sweep_duration      = time.time() - sweep_start
         msg.scan_time       = float(sweep_duration)
@@ -162,7 +172,7 @@ class EsibotSensors(Node):
             t_send = time.time()
             self._set_servo_angle(angle)
             elapsed = time.time() - t_send
-            remaining = max(0.0, 0.20 - elapsed)
+            remaining = max(0.0, 0.08 - elapsed)
             if remaining > 0:
                 time.sleep(remaining)
             return self.hc_sr04_distance()
@@ -176,9 +186,9 @@ class EsibotSensors(Node):
         """Convertit l'angle ROS [-π/2, +π/2] en duty cycle 50Hz et l'applique."""
         if self._servo_pwm is None:
             return
-        angle_deg  = math.degrees(angle)                      # -90 à +90
-        pulse_us   = 1500.0 + angle_deg * (500.0 / 90.0)     # 1000–2000 µs
-        pulse_us   = max(1000.0, min(2000.0, pulse_us))
+        angle_deg  = math.degrees(angle)                      # -100 à +100
+        pulse_us   = 1500.0 + angle_deg * (600.0 / 100.0)    # 900–2100 µs
+        pulse_us   = max(900.0, min(2100.0, pulse_us))
         duty_cycle = pulse_us / 20000.0 * 100.0               # 5.0–10.0 %
         try:
             self._servo_pwm.ChangeDutyCycle(duty_cycle)
