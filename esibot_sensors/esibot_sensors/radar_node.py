@@ -52,7 +52,7 @@ class EsibotSensors(Node):
         # ── Paramètres ROS ───────────────────────────────────────────────────
         self.declare_parameter("trig_pin",     23)   # RPi Pin 16 → HC-SR04 TRIG
         self.declare_parameter("echo_pin",     25)   # RPi Pin 22 → diviseur → HC-SR04 ECHO
-        self.declare_parameter("sweep_period",  4.0)
+        self.declare_parameter("sweep_period",  3.0)
         self.declare_parameter("sim_mode",     False)
 
         self.trig_pin      = self.get_parameter("trig_pin").value
