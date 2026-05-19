@@ -117,6 +117,11 @@ class EsibotDriver(Node):
         self._pwm_ena = None
         self._pwm_enb = None
 
+        # ── Motor direction (+1 forward, -1 backward, 0 stopped) ─────────────
+        # Used to sign encoder tick deltas — IR encoders count both directions
+        self._dir_left  = 0
+        self._dir_right = 0
+
         # ── Encoder debug counter (log ticks every 2 s) ───────────────────────
         self._debug_tick = 0
 
@@ -192,29 +197,35 @@ class EsibotDriver(Node):
         duty_left  = min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY)
         duty_right = min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY)
 
-        # Left motor direction
+        # Left motor direction + sign tracking for encoder integration
         if v_left > MOTOR_DEADBAND:
             GPIO.output(GPIO_IN1, GPIO.HIGH)
             GPIO.output(GPIO_IN2, GPIO.LOW)
+            self._dir_left = +1
         elif v_left < -MOTOR_DEADBAND:
             GPIO.output(GPIO_IN1, GPIO.LOW)
             GPIO.output(GPIO_IN2, GPIO.HIGH)
+            self._dir_left = -1
         else:
             GPIO.output(GPIO_IN1, GPIO.LOW)
             GPIO.output(GPIO_IN2, GPIO.LOW)
             duty_left = 0.0
+            self._dir_left = 0
 
-        # Right motor direction
+        # Right motor direction + sign tracking for encoder integration
         if v_right > MOTOR_DEADBAND:
             GPIO.output(GPIO_IN3, GPIO.HIGH)
             GPIO.output(GPIO_IN4, GPIO.LOW)
+            self._dir_right = +1
         elif v_right < -MOTOR_DEADBAND:
             GPIO.output(GPIO_IN3, GPIO.LOW)
             GPIO.output(GPIO_IN4, GPIO.HIGH)
+            self._dir_right = -1
         else:
             GPIO.output(GPIO_IN3, GPIO.LOW)
             GPIO.output(GPIO_IN4, GPIO.LOW)
             duty_right = 0.0
+            self._dir_right = 0
 
         # Speed via PWM duty cycle
         self._pwm_ena.ChangeDutyCycle(duty_left)
@@ -333,8 +344,9 @@ class EsibotDriver(Node):
             curr_left  = self._ticks_left
             curr_right = self._ticks_right
 
-        delta_left  = (curr_left  - self._prev_left)  * METRES_PER_TICK
-        delta_right = (curr_right - self._prev_right) * METRES_PER_TICK
+        # Apply direction sign — IR encoders count pulses regardless of direction
+        delta_left  = (curr_left  - self._prev_left)  * METRES_PER_TICK * self._dir_left
+        delta_right = (curr_right - self._prev_right) * METRES_PER_TICK * self._dir_right
 
         self._prev_left  = curr_left
         self._prev_right = curr_right
@@ -344,7 +356,8 @@ class EsibotDriver(Node):
         if self._debug_tick >= 40:
             self._debug_tick = 0
             self.get_logger().info(
-                f'Encoders — L:{curr_left} ticks  R:{curr_right} ticks  '
+                f'Encoders — L:{curr_left} ticks (dir={self._dir_left:+d})  '
+                f'R:{curr_right} ticks (dir={self._dir_right:+d})  '
                 f'| pose x={self.x:.3f} y={self.y:.3f} θ={math.degrees(self.theta):.1f}°'
             )
 
