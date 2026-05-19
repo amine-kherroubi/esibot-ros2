@@ -2,12 +2,14 @@
 """
 esibot_driver.py  —  ENCODER-BASED VERSION (closed-loop odometry)
 ==================================================================
-Wiring (EsiBot Wiring v2):
+Wiring (EsiBot Wiring v3):
   - UART read-only (Pin 10 RXD ← ESP32 GPIO1/U0TXD) — BAT telemetry only
   - Left  wheel encoder D0 → RPi GPIO17 (Pin 11), powered from RPi 3.3V (Pin 1)
-  - Right wheel encoder D0 → RPi GPIO18 (Pin 12), powered from RPi 3.3V (Pin 1)
-  - L298N IN1 → GPIO5, IN2 → GPIO6, IN3 → GPIO13, IN4 → GPIO19
-  - ENA/ENB hardwired to 5V → binary direction control via IN1-IN4
+  - Right wheel encoder D0 → RPi GPIO24 (Pin 18), powered from RPi 3.3V (Pin 1)
+  - L298N IN1 → GPIO5, IN2 → GPIO6, IN3 → GPIO13, IN4 → GPIO26
+  - L298N ENA → GPIO18 (Pin 12) — hardware PWM, left motor speed
+  - L298N ENB → GPIO19 (Pin 35) — hardware PWM, right motor speed
+  - Remove 5V bridge jumpers on ENA/ENB before connecting
 
 UART protocol:
   ESP32 → RPi :  "BAT:<voltage>\n"   (read-only, Pi sends nothing)
@@ -53,13 +55,18 @@ MAX_ANGULAR_VEL = 2.0   # rad/s
 
 # RPi GPIO pin numbers (BCM numbering) for encoder digital outputs
 GPIO_ENCODER_LEFT  = 17   # D0 of left  encoder → RPi Pin 11
-GPIO_ENCODER_RIGHT = 18   # D0 of right encoder → RPi Pin 12
+GPIO_ENCODER_RIGHT = 24   # D0 of right encoder → RPi Pin 18 (moved from GPIO18)
 
-# L298N motor driver — direct GPIO control (BCM numbering)
+# L298N motor driver — direction control (BCM numbering)
 GPIO_IN1 = 5    # Pin 29 — left  motor forward
 GPIO_IN2 = 6    # Pin 31 — left  motor backward
 GPIO_IN3 = 13   # Pin 33 — right motor forward
-GPIO_IN4 = 19   # Pin 35 — right motor backward
+GPIO_IN4 = 26   # Pin 37 — right motor backward (moved from GPIO19)
+
+# L298N speed control via PWM on ENA/ENB
+GPIO_ENA = 18   # Pin 12 — left  motor speed (hardware PWM0)
+GPIO_ENB = 19   # Pin 35 — right motor speed (hardware PWM1)
+PWM_FREQ = 1000  # Hz — motor PWM frequency
 
 # Velocity threshold below which the motor is stopped (m/s)
 MOTOR_DEADBAND = 0.05
@@ -105,6 +112,10 @@ class EsibotDriver(Node):
         self._vel_linear  = 0.0
         self._vel_angular = 0.0
 
+        # ── Motor PWM handles (set in _setup_motor_gpio) ──────────────────────
+        self._pwm_ena = None
+        self._pwm_enb = None
+
         # ── cmd_vel watchdog ──────────────────────────────────────────────────
         self._last_cmd_time = self.get_clock().now()
 
@@ -147,26 +158,37 @@ class EsibotDriver(Node):
     # ══════════════════════════════════════════════════════════════════════════
 
     def _setup_motor_gpio(self):
-        """Configure L298N IN1-IN4 as outputs, all LOW (motors stopped)."""
+        """Configure L298N IN1-IN4 (direction) and ENA/ENB (PWM speed)."""
         try:
             import RPi.GPIO as GPIO
             for pin in (GPIO_IN1, GPIO_IN2, GPIO_IN3, GPIO_IN4):
                 GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(GPIO_ENA, GPIO.OUT)
+            GPIO.setup(GPIO_ENB, GPIO.OUT)
+            self._pwm_ena = GPIO.PWM(GPIO_ENA, PWM_FREQ)
+            self._pwm_enb = GPIO.PWM(GPIO_ENB, PWM_FREQ)
+            self._pwm_ena.start(0)
+            self._pwm_enb.start(0)
             self._motor_gpio_available = True
             self.get_logger().info(
                 f'Motor GPIO configured: IN1=GPIO{GPIO_IN1}, IN2=GPIO{GPIO_IN2}, '
-                f'IN3=GPIO{GPIO_IN3}, IN4=GPIO{GPIO_IN4}'
+                f'IN3=GPIO{GPIO_IN3}, IN4=GPIO{GPIO_IN4}, '
+                f'ENA=GPIO{GPIO_ENA} (PWM {PWM_FREQ}Hz), ENB=GPIO{GPIO_ENB} (PWM {PWM_FREQ}Hz)'
             )
         except Exception as e:
             self._motor_gpio_available = False
             self.get_logger().warn(f'Motor GPIO setup failed ({e}) — motors disabled.')
 
     def _set_motor(self, v_left: float, v_right: float):
-        """Binary motor control: full-speed forward, full-speed backward, or stop."""
+        """PWM motor control: direction via IN1-IN4, speed via ENA/ENB duty cycle."""
         if not self._motor_gpio_available:
             return
         import RPi.GPIO as GPIO
-        # Left motor
+
+        duty_left  = min(abs(v_left)  / MAX_LINEAR_VEL * 100.0, 100.0)
+        duty_right = min(abs(v_right) / MAX_LINEAR_VEL * 100.0, 100.0)
+
+        # Left motor direction
         if v_left > MOTOR_DEADBAND:
             GPIO.output(GPIO_IN1, GPIO.HIGH)
             GPIO.output(GPIO_IN2, GPIO.LOW)
@@ -176,7 +198,9 @@ class EsibotDriver(Node):
         else:
             GPIO.output(GPIO_IN1, GPIO.LOW)
             GPIO.output(GPIO_IN2, GPIO.LOW)
-        # Right motor
+            duty_left = 0.0
+
+        # Right motor direction
         if v_right > MOTOR_DEADBAND:
             GPIO.output(GPIO_IN3, GPIO.HIGH)
             GPIO.output(GPIO_IN4, GPIO.LOW)
@@ -186,6 +210,11 @@ class EsibotDriver(Node):
         else:
             GPIO.output(GPIO_IN3, GPIO.LOW)
             GPIO.output(GPIO_IN4, GPIO.LOW)
+            duty_right = 0.0
+
+        # Speed via PWM duty cycle
+        self._pwm_ena.ChangeDutyCycle(duty_left)
+        self._pwm_enb.ChangeDutyCycle(duty_right)
 
     def _setup_gpio(self):
         """
@@ -431,6 +460,12 @@ class EsibotDriver(Node):
 
     def destroy_node(self):
         self._send_stop()
+        if self._pwm_ena is not None:
+            try:
+                self._pwm_ena.stop()
+                self._pwm_enb.stop()
+            except Exception:
+                pass
         if self.serial_conn is not None:
             try:
                 self.serial_conn.close()
@@ -438,7 +473,8 @@ class EsibotDriver(Node):
                 pass
         if self._gpio_available or self._motor_gpio_available:
             try:
-                self._GPIO.cleanup()
+                import RPi.GPIO as GPIO
+                GPIO.cleanup()
             except Exception:
                 pass
         super().destroy_node()

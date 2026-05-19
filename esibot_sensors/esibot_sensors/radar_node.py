@@ -2,10 +2,11 @@
 """
 EsibotSensors - HC-SR04 sweep node
 ==================================
-Architecture réelle (wiring diagram v2) :
-  - RPi GPIO12 → 1kΩ → MG996R signal  (hardware PWM 50Hz, via pigpio)
+Architecture réelle (wiring diagram v3) :
+  - RPi GPIO12 → 1kΩ → MG996R signal  (software PWM 50Hz, RPi.GPIO)
   - RPi GPIO23 → HC-SR04 TRIG
-  - RPi GPIO24 ← HC-SR04 ECHO (via diviseur 1.2kΩ/1.5kΩ → 2.78V)
+  - RPi GPIO25 ← HC-SR04 ECHO (via diviseur R1=1.2kΩ/R2=1.5kΩ → 2.78V)
+  - RPi GPIO24 ← right wheel encoder D0 (moved here from GPIO18)
 """
 
 import math
@@ -28,15 +29,7 @@ except ImportError as exc:
     HARDWARE_AVAILABLE = False
     GPIO_IMPORT_ERROR = exc
 
-# ── pigpio (servo PWM sur GPIO12) ────────────────────────────────────────────
-try:
-    import pigpio
-    PIGPIO_AVAILABLE = True
-except ImportError:
-    pigpio = None
-    PIGPIO_AVAILABLE = False
-
-GPIO_SERVO_PIN = 12   # RPi Pin 32 — hardware PWM, 1kΩ series resistor
+GPIO_SERVO_PIN = 12   # RPi Pin 32 — software PWM 50Hz, 1kΩ series resistor
 
 
 class EsibotSensors(Node):
@@ -58,7 +51,7 @@ class EsibotSensors(Node):
 
         # ── Paramètres ROS ───────────────────────────────────────────────────
         self.declare_parameter("trig_pin",     23)   # RPi Pin 16 → HC-SR04 TRIG
-        self.declare_parameter("echo_pin",     24)   # RPi Pin 18 → diviseur → HC-SR04 ECHO
+        self.declare_parameter("echo_pin",     25)   # RPi Pin 22 → diviseur → HC-SR04 ECHO
         self.declare_parameter("sweep_period",  3.0)
         self.declare_parameter("sim_mode",     False)
 
@@ -74,29 +67,24 @@ class EsibotSensors(Node):
             GPIO.output(self.trig_pin, False)
             self.log.info(
                 f"GPIO initialisé — TRIG=GPIO{self.trig_pin}, "
-                f"ECHO=GPIO{self.echo_pin} (via diviseur 1.2kΩ/1.5kΩ)"
+                f"ECHO=GPIO{self.echo_pin} (via diviseur R1=1.2kΩ/R2=1.5kΩ → 2.78V)"
             )
         else:
             self.log.warning(
                 f"RPi.GPIO introuvable — mode SIMULATION actif. ({GPIO_IMPORT_ERROR})"
             )
 
-        # ── pigpio — servo PWM sur GPIO12 ───────────────────────────────────
-        self._pi = None
-        if HARDWARE_AVAILABLE and PIGPIO_AVAILABLE:
+        # ── Servo PWM sur GPIO12 (RPi.GPIO software PWM 50Hz) ───────────────
+        self._servo_pwm = None
+        if HARDWARE_AVAILABLE:
             try:
-                self._pi = pigpio.pi()
-                if not self._pi.connected:
-                    self._pi = None
-                    self.log.error("pigpiod non joignable — servo désactivé. Lancer : sudo systemctl start pigpiod")
-                else:
-                    self._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, 1500)  # centre
-                    self.log.info(f"Servo PWM initialisé sur GPIO{GPIO_SERVO_PIN} (pigpio)")
+                GPIO.setup(GPIO_SERVO_PIN, GPIO.OUT)
+                self._servo_pwm = GPIO.PWM(GPIO_SERVO_PIN, 50)  # 50Hz
+                self._servo_pwm.start(7.5)  # centre (1500µs / 20ms = 7.5%)
+                self.log.info(f"Servo PWM initialisé sur GPIO{GPIO_SERVO_PIN} (50Hz)")
             except Exception as exc:
-                self._pi = None
-                self.log.error(f"Erreur init pigpio : {exc}")
-        elif HARDWARE_AVAILABLE and not PIGPIO_AVAILABLE:
-            self.log.warning("pigpio introuvable — servo désactivé. Installer : pip3 install pigpio")
+                self._servo_pwm = None
+                self.log.error(f"Erreur init servo PWM : {exc}")
 
         # ── Garde anti-réentrance ────────────────────────────────────────────
         self._scanning = False
@@ -182,20 +170,21 @@ class EsibotSensors(Node):
             time.sleep(0.01)
             return 1.0 + random.gauss(0.0, 0.02)
 
-    # ── Servo PWM direct via pigpio (GPIO12) ─────────────────────────────────
+    # ── Servo PWM direct (GPIO12, RPi.GPIO 50Hz) ─────────────────────────────
 
     def _set_servo_angle(self, angle: float):
-        """Convertit l'angle ROS [-π/2, +π/2] en pulse µs et l'envoie via pigpio."""
-        if self._pi is None:
+        """Convertit l'angle ROS [-π/2, +π/2] en duty cycle 50Hz et l'applique."""
+        if self._servo_pwm is None:
             return
-        angle_deg = math.degrees(angle)                    # -90 à +90
-        pulse_us  = int(1500 + angle_deg * (500.0 / 90.0))  # 1000–2000 µs
-        pulse_us  = max(1000, min(2000, pulse_us))
+        angle_deg  = math.degrees(angle)                      # -90 à +90
+        pulse_us   = 1500.0 + angle_deg * (500.0 / 90.0)     # 1000–2000 µs
+        pulse_us   = max(1000.0, min(2000.0, pulse_us))
+        duty_cycle = pulse_us / 20000.0 * 100.0               # 5.0–10.0 %
         try:
-            self._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, pulse_us)
-            self.log.debug(f"Servo GPIO{GPIO_SERVO_PIN} : {angle_deg:.1f}° → {pulse_us}µs")
+            self._servo_pwm.ChangeDutyCycle(duty_cycle)
+            self.log.debug(f"Servo : {angle_deg:.1f}° → {pulse_us:.0f}µs ({duty_cycle:.2f}%)")
         except Exception as exc:
-            self.log.error(f"Erreur pigpio servo : {exc}")
+            self.log.error(f"Erreur servo PWM : {exc}")
 
     # ── HC-SR04 (branché directement sur le RPi) ─────────────────────────────
 
@@ -244,10 +233,9 @@ def main(args=None):
         pass
     finally:
         if HARDWARE_AVAILABLE:
-            if node._pi is not None:
+            if node._servo_pwm is not None:
                 try:
-                    node._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, 0)  # désactive PWM
-                    node._pi.stop()
+                    node._servo_pwm.stop()
                 except Exception:
                     pass
             GPIO.cleanup()
