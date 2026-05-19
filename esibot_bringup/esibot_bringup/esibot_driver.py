@@ -2,41 +2,21 @@
 """
 esibot_driver.py  —  ENCODER-BASED VERSION (closed-loop odometry)
 ==================================================================
-Wiring (from EsiBot Wiring Guide v1):
-  - UART via RPi GPIO UART (Pin 8 TXD → ESP32 GPIO3/U0RXD,
-                             Pin 10 RXD ← ESP32 GPIO1/U0TXD)
-    → serial_port: /dev/ttyAMA0
+Wiring (EsiBot Wiring v2):
+  - UART read-only (Pin 10 RXD ← ESP32 GPIO1/U0TXD) — BAT telemetry only
   - Left  wheel encoder D0 → RPi GPIO17 (Pin 11), powered from RPi 3.3V (Pin 1)
   - Right wheel encoder D0 → RPi GPIO18 (Pin 12), powered from RPi 3.3V (Pin 1)
-  - Encoders are 20-hole discs → 20 ticks per revolution (rising edges only)
-  - ENA/ENB hardwired to 5V → direction/stop controlled via IN1-IN4 only
-
-Odometry:
-  Encoder ticks are counted in a background thread using RPi.GPIO interrupts.
-  Each rising edge on D0 = 1 tick. The driver integrates left/right tick deltas
-  into a differential-drive pose estimate (Runge-Kutta 2nd order).
-
-  Ticks per revolution = 20  (20-hole encoder disc, rising edges only)
-  Wheel radius  → measure your robot, update WHEEL_RADIUS below
-  Wheel base    → measure your robot, update WHEEL_BASE below
+  - L298N IN1 → GPIO5, IN2 → GPIO6, IN3 → GPIO13, IN4 → GPIO19
+  - ENA/ENB hardwired to 5V → binary direction control via IN1-IN4
 
 UART protocol:
-  RPi → ESP32 :  "CMD:<v_right>,<v_left>\n"   e.g. "CMD:0.300,-0.280\n"
-  ESP32 → RPi :  "BAT:<voltage>\n"             e.g. "BAT:11.2\n"
+  ESP32 → RPi :  "BAT:<voltage>\n"   (read-only, Pi sends nothing)
 
 Topics:
   Publishes  -> /odom            (nav_msgs/Odometry)
   Publishes  -> /tf              (geometry_msgs/TransformStamped)
   Publishes  -> /battery_state   (sensor_msgs/BatteryState)
   Subscribes -> /cmd_vel         (geometry_msgs/Twist)
-
-Before first use:
-  1. Disable Pi serial console:
-       sudo raspi-config → Interface Options → Serial Port
-       "login shell over serial?" → No
-       "serial port hardware enabled?" → Yes  → Reboot
-  2. Install RPi.GPIO if not present:
-       pip3 install RPi.GPIO
 """
 
 import math
@@ -74,6 +54,15 @@ MAX_ANGULAR_VEL = 2.0   # rad/s
 # RPi GPIO pin numbers (BCM numbering) for encoder digital outputs
 GPIO_ENCODER_LEFT  = 17   # D0 of left  encoder → RPi Pin 11
 GPIO_ENCODER_RIGHT = 18   # D0 of right encoder → RPi Pin 12
+
+# L298N motor driver — direct GPIO control (BCM numbering)
+GPIO_IN1 = 5    # Pin 29 — left  motor forward
+GPIO_IN2 = 6    # Pin 31 — left  motor backward
+GPIO_IN3 = 13   # Pin 33 — right motor forward
+GPIO_IN4 = 19   # Pin 35 — right motor backward
+
+# Velocity threshold below which the motor is stopped (m/s)
+MOTOR_DEADBAND = 0.05
 
 
 class EsibotDriver(Node):
@@ -135,10 +124,12 @@ class EsibotDriver(Node):
         if not self.sim_mode:
             self._connect_serial()
 
-        # ── GPIO encoder interrupts ───────────────────────────────────────────
+        # ── GPIO encoder interrupts + motor outputs ───────────────────────────
         self._gpio_available = False
+        self._motor_gpio_available = False
         if not self.sim_mode:
             self._setup_gpio()
+            self._setup_motor_gpio()
 
         # ── Periodic update timer ─────────────────────────────────────────────
         self._last_update_time = self.get_clock().now()
@@ -154,6 +145,47 @@ class EsibotDriver(Node):
     # ══════════════════════════════════════════════════════════════════════════
     #  GPIO SETUP
     # ══════════════════════════════════════════════════════════════════════════
+
+    def _setup_motor_gpio(self):
+        """Configure L298N IN1-IN4 as outputs, all LOW (motors stopped)."""
+        try:
+            import RPi.GPIO as GPIO
+            for pin in (GPIO_IN1, GPIO_IN2, GPIO_IN3, GPIO_IN4):
+                GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
+            self._motor_gpio_available = True
+            self.get_logger().info(
+                f'Motor GPIO configured: IN1=GPIO{GPIO_IN1}, IN2=GPIO{GPIO_IN2}, '
+                f'IN3=GPIO{GPIO_IN3}, IN4=GPIO{GPIO_IN4}'
+            )
+        except Exception as e:
+            self._motor_gpio_available = False
+            self.get_logger().warn(f'Motor GPIO setup failed ({e}) — motors disabled.')
+
+    def _set_motor(self, v_left: float, v_right: float):
+        """Binary motor control: full-speed forward, full-speed backward, or stop."""
+        if not self._motor_gpio_available:
+            return
+        import RPi.GPIO as GPIO
+        # Left motor
+        if v_left > MOTOR_DEADBAND:
+            GPIO.output(GPIO_IN1, GPIO.HIGH)
+            GPIO.output(GPIO_IN2, GPIO.LOW)
+        elif v_left < -MOTOR_DEADBAND:
+            GPIO.output(GPIO_IN1, GPIO.LOW)
+            GPIO.output(GPIO_IN2, GPIO.HIGH)
+        else:
+            GPIO.output(GPIO_IN1, GPIO.LOW)
+            GPIO.output(GPIO_IN2, GPIO.LOW)
+        # Right motor
+        if v_right > MOTOR_DEADBAND:
+            GPIO.output(GPIO_IN3, GPIO.HIGH)
+            GPIO.output(GPIO_IN4, GPIO.LOW)
+        elif v_right < -MOTOR_DEADBAND:
+            GPIO.output(GPIO_IN3, GPIO.LOW)
+            GPIO.output(GPIO_IN4, GPIO.HIGH)
+        else:
+            GPIO.output(GPIO_IN3, GPIO.LOW)
+            GPIO.output(GPIO_IN4, GPIO.LOW)
 
     def _setup_gpio(self):
         """
@@ -325,13 +357,7 @@ class EsibotDriver(Node):
     # ══════════════════════════════════════════════════════════════════════════
 
     def _cmd_vel_callback(self, msg: Twist):
-        """
-        Clamp velocity, store for watchdog/open-loop fallback, send to ESP32.
-
-        The ESP32 interprets CMD values as signed wheel velocities:
-          positive → forward, negative → reverse, magnitude drives PWM/on-off.
-        ENA/ENB are hardwired to 5V so direction is set via IN1-IN4 only.
-        """
+        """Clamp velocity, store for watchdog/open-loop fallback, drive L298N via GPIO."""
         linear  = max(-MAX_LINEAR_VEL,  min(MAX_LINEAR_VEL,  msg.linear.x))
         angular = max(-MAX_ANGULAR_VEL, min(MAX_ANGULAR_VEL, msg.angular.z))
 
@@ -342,24 +368,15 @@ class EsibotDriver(Node):
         v_right = linear + (angular * WHEEL_BASE / 2.0)
         v_left  = linear - (angular * WHEEL_BASE / 2.0)
 
-        if self.serial_conn is not None:
-            cmd = f'CMD:{v_right:.3f},{v_left:.3f}\n'
-            try:
-                self.serial_conn.write(cmd.encode('utf-8'))
-            except Exception as e:
-                self.get_logger().warn(f'Serial write error: {e}')
+        self._set_motor(v_left, v_right)
 
     def _send_stop(self):
-        """Send a zero-velocity command if we haven't already."""
+        """Stop motors if not already stopped."""
         if self._vel_linear == 0.0 and self._vel_angular == 0.0:
             return
         self._vel_linear  = 0.0
         self._vel_angular = 0.0
-        if self.serial_conn is not None:
-            try:
-                self.serial_conn.write(b'CMD:0.000,0.000\n')
-            except Exception:
-                pass
+        self._set_motor(0.0, 0.0)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  PUBLISHERS
@@ -415,7 +432,7 @@ class EsibotDriver(Node):
                 self.serial_conn.close()
             except Exception:
                 pass
-        if self._gpio_available:
+        if self._gpio_available or self._motor_gpio_available:
             try:
                 self._GPIO.cleanup()
             except Exception:

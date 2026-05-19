@@ -2,18 +2,14 @@
 """
 EsibotSensors - HC-SR04 sweep node
 ==================================
-Architecture réelle (wiring diagram) :
-  - RPi      → HC-SR04  : TRIG=GPIO23, ECHO=GPIO24 (via diviseur 1.2kΩ/1.5kΩ)
-  - ESP32-CAM → MG996R  : PWM sur GPIO15 (50Hz, pull-down 10kΩ hardware obligatoire)
-  - RPi ↔ ESP32-CAM     : UART (RPi TX=GPIO14/Pin8, RX=GPIO15/Pin10)
-
-Le RPi envoie la consigne d'angle au ESP32 via UART,
-attend que le servo soit en position, puis déclenche le HC-SR04.
+Architecture réelle (wiring diagram v2) :
+  - RPi GPIO12 → 1kΩ → MG996R signal  (hardware PWM 50Hz, via pigpio)
+  - RPi GPIO23 → HC-SR04 TRIG
+  - RPi GPIO24 ← HC-SR04 ECHO (via diviseur 1.2kΩ/1.5kΩ → 2.78V)
 """
 
 import math
 import random
-import serial          # pyserial — communication UART vers ESP32
 import time
 
 import rclpy
@@ -22,7 +18,7 @@ from sensor_msgs.msg import LaserScan, JointState
 
 from esibot_logging import get_logger, setup_logging
 
-# ── GPIO (RPi uniquement : TRIG + ECHO) ─────────────────────────────────────
+# ── GPIO (RPi : TRIG + ECHO) ─────────────────────────────────────────────────
 try:
     import RPi.GPIO as GPIO
     HARDWARE_AVAILABLE = True
@@ -31,6 +27,16 @@ except ImportError as exc:
     GPIO = None
     HARDWARE_AVAILABLE = False
     GPIO_IMPORT_ERROR = exc
+
+# ── pigpio (servo PWM sur GPIO12) ────────────────────────────────────────────
+try:
+    import pigpio
+    PIGPIO_AVAILABLE = True
+except ImportError:
+    pigpio = None
+    PIGPIO_AVAILABLE = False
+
+GPIO_SERVO_PIN = 12   # RPi Pin 32 — hardware PWM, 1kΩ series resistor
 
 
 class EsibotSensors(Node):
@@ -51,21 +57,14 @@ class EsibotSensors(Node):
         self.range_max = 4.00   # 400 cm
 
         # ── Paramètres ROS ───────────────────────────────────────────────────
-        # Pins RPi (BCM) — conformes au wiring diagram
         self.declare_parameter("trig_pin",     23)   # RPi Pin 16 → HC-SR04 TRIG
         self.declare_parameter("echo_pin",     24)   # RPi Pin 18 → diviseur → HC-SR04 ECHO
         self.declare_parameter("sweep_period",  3.0)
         self.declare_parameter("sim_mode",     False)
 
-        # Port UART vers ESP32-CAM
-        self.declare_parameter("uart_port",  "/dev/ttyS0")
-        self.declare_parameter("uart_baud",   115200)
-
-        self.trig_pin     = self.get_parameter("trig_pin").value
-        self.echo_pin     = self.get_parameter("echo_pin").value
+        self.trig_pin      = self.get_parameter("trig_pin").value
+        self.echo_pin      = self.get_parameter("echo_pin").value
         self._sweep_period = float(self.get_parameter("sweep_period").value)
-        uart_port         = self.get_parameter("uart_port").value
-        uart_baud         = self.get_parameter("uart_baud").value
 
         # ── Init GPIO RPi (TRIG + ECHO seulement) ───────────────────────────
         if HARDWARE_AVAILABLE:
@@ -82,20 +81,22 @@ class EsibotSensors(Node):
                 f"RPi.GPIO introuvable — mode SIMULATION actif. ({GPIO_IMPORT_ERROR})"
             )
 
-        # ── UART vers ESP32-CAM (contrôle MG996R) ───────────────────────────
-        self._uart = None
-        if HARDWARE_AVAILABLE:
+        # ── pigpio — servo PWM sur GPIO12 ───────────────────────────────────
+        self._pi = None
+        if HARDWARE_AVAILABLE and PIGPIO_AVAILABLE:
             try:
-                self._uart = serial.Serial(uart_port, uart_baud, timeout=0.15, write_timeout=1.0)
-                    # Flush des buffers UART
-                self._uart.reset_input_buffer()
-                self._uart.reset_output_buffer()
-                self.log.info(f"UART ouvert : {uart_port} @ {uart_baud} baud")
+                self._pi = pigpio.pi()
+                if not self._pi.connected:
+                    self._pi = None
+                    self.log.error("pigpiod non joignable — servo désactivé. Lancer : sudo systemctl start pigpiod")
+                else:
+                    self._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, 1500)  # centre
+                    self.log.info(f"Servo PWM initialisé sur GPIO{GPIO_SERVO_PIN} (pigpio)")
             except Exception as exc:
-                self.log.error(
-                    f"Impossible d'ouvrir le port UART {uart_port} : {exc}. "
-                    "Le servo ne bougera pas."
-                )
+                self._pi = None
+                self.log.error(f"Erreur init pigpio : {exc}")
+        elif HARDWARE_AVAILABLE and not PIGPIO_AVAILABLE:
+            self.log.warning("pigpio introuvable — servo désactivé. Installer : pip3 install pigpio")
 
         # ── Garde anti-réentrance ────────────────────────────────────────────
         self._scanning = False
@@ -165,15 +166,15 @@ class EsibotSensors(Node):
 
     def read_distance(self, angle: float) -> float:
         """
-        1. Envoie la consigne d'angle au ESP32 via UART → ESP32 pilote le MG996R.
-        2. Attend la stabilisation du servo (100 ms).
-        3. Déclenche le HC-SR04 depuis le RPi et retourne la distance (m).
+        1. Commande le servo MG996R via PWM hardware GPIO12 (pigpio).
+        2. Attend la stabilisation (200ms garantis depuis l'envoi).
+        3. Déclenche le HC-SR04 et retourne la distance (m).
         """
         if HARDWARE_AVAILABLE:
             t_send = time.time()
-            self._send_servo_angle(angle)              # ESP32 bouge le MG996R
+            self._set_servo_angle(angle)
             elapsed = time.time() - t_send
-            remaining = max(0.0, 0.20 - elapsed)       # guarantee 200ms from send
+            remaining = max(0.0, 0.20 - elapsed)
             if remaining > 0:
                 time.sleep(remaining)
             return self.hc_sr04_distance()
@@ -181,33 +182,20 @@ class EsibotSensors(Node):
             time.sleep(0.01)
             return 1.0 + random.gauss(0.0, 0.02)
 
-    # ── Commande servo via UART (MG996R piloté par ESP32-CAM GPIO15) ─────────
+    # ── Servo PWM direct via pigpio (GPIO12) ─────────────────────────────────
 
-    def _send_servo_angle(self, angle: float):
-        if self._uart is None:
-            self.log.warning("UART non disponible — servo non commandé.")
+    def _set_servo_angle(self, angle: float):
+        """Convertit l'angle ROS [-π/2, +π/2] en pulse µs et l'envoie via pigpio."""
+        if self._pi is None:
             return
-
-        angle_deg = round(math.degrees(angle)) + 90
-        cmd = f"SERVO:{angle_deg}\n"
-
+        angle_deg = math.degrees(angle)                    # -90 à +90
+        pulse_us  = int(1500 + angle_deg * (500.0 / 90.0))  # 1000–2000 µs
+        pulse_us  = max(1000, min(2000, pulse_us))
         try:
-            self._uart.reset_input_buffer()       # discard stale BAT telemetry
-            self._uart.write(cmd.encode("ascii"))
-            self.log.debug(f"UART → ESP32 : {cmd.strip()}")
-
-            deadline = time.time() + 0.15         # wait at most 150 ms for OK
-            while time.time() < deadline:
-                ack = self._uart.readline().decode().strip()
-                if ack == "OK":
-                    return
-                elif ack.startswith("BAT:"):
-                    continue
-                elif ack:
-                    self.log.warning(f"ACK invalide ESP32 : '{ack}'")
-                    return
+            self._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, pulse_us)
+            self.log.debug(f"Servo GPIO{GPIO_SERVO_PIN} : {angle_deg:.1f}° → {pulse_us}µs")
         except Exception as exc:
-            self.log.error(f"Erreur écriture UART : {exc}")
+            self.log.error(f"Erreur pigpio servo : {exc}")
 
     # ── HC-SR04 (branché directement sur le RPi) ─────────────────────────────
 
@@ -256,8 +244,12 @@ def main(args=None):
         pass
     finally:
         if HARDWARE_AVAILABLE:
-            if node._uart:
-                node._uart.close()
+            if node._pi is not None:
+                try:
+                    node._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, 0)  # désactive PWM
+                    node._pi.stop()
+                except Exception:
+                    pass
             GPIO.cleanup()
         try:
             node.destroy_node()
