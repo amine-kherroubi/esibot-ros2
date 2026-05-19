@@ -172,7 +172,7 @@ class EsibotSensors(Node):
             t_send = time.time()
             self._set_servo_angle(angle)
             elapsed = time.time() - t_send
-            remaining = max(0.0, 0.08 - elapsed)
+            remaining = max(0.0, 0.15 - elapsed)
             if remaining > 0:
                 time.sleep(remaining)
             return self.hc_sr04_distance()
