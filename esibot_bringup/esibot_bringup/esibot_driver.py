@@ -42,9 +42,8 @@ WHEEL_BASE   = 0.16    # metres  — distance between wheel centres
 # tyre if present) and divide by 2.
 WHEEL_RADIUS = 0.033   # metres  — wheel radius
 
-# 20-hole encoder disc, counting rising edges only → 20 ticks per full revolution.
-# If you later use both edges (BOTH in GPIO.add_event_detect) set this to 40.
-TICKS_PER_REV = 20
+# 20-hole encoder disc, counting both edges (RISING + FALLING) → 40 ticks/rev.
+TICKS_PER_REV = 40
 
 # Derived: metres per tick
 METRES_PER_TICK = (2.0 * math.pi * WHEEL_RADIUS) / TICKS_PER_REV
@@ -245,12 +244,12 @@ class EsibotDriver(Node):
 
             GPIO.add_event_detect(
                 GPIO_ENCODER_LEFT,
-                GPIO.RISING,
+                GPIO.BOTH,
                 callback=self._left_encoder_cb,
             )
             GPIO.add_event_detect(
                 GPIO_ENCODER_RIGHT,
-                GPIO.RISING,
+                GPIO.BOTH,
                 callback=self._right_encoder_cb,
             )
 
@@ -420,12 +419,8 @@ class EsibotDriver(Node):
         self._vel_angular = angular
         self._last_cmd_time = self.get_clock().now()
 
-        if linear == 0.0 and angular != 0.0:
-            v_right = max(0.0,  angular) * WHEEL_BASE
-            v_left  = max(0.0, -angular) * WHEEL_BASE
-        else:
-            v_right = linear + (angular * WHEEL_BASE / 2.0)
-            v_left  = linear - (angular * WHEEL_BASE / 2.0)
+        v_right = linear + (angular * WHEEL_BASE / 2.0)
+        v_left  = linear - (angular * WHEEL_BASE / 2.0)
 
         self._set_motor(v_left, v_right)
 
