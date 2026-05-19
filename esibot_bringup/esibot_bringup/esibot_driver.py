@@ -66,7 +66,8 @@ GPIO_IN4 = 26   # Pin 37 — right motor backward (moved from GPIO19)
 # L298N speed control via PWM on ENA/ENB
 GPIO_ENA = 18   # Pin 12 — left  motor speed (hardware PWM0)
 GPIO_ENB = 19   # Pin 35 — right motor speed (hardware PWM1)
-PWM_FREQ = 1000  # Hz — motor PWM frequency
+PWM_FREQ     = 1000  # Hz — motor PWM frequency
+MAX_PWM_DUTY =   55  # % — cap duty cycle to limit top speed (tune empirically)
 
 # Velocity threshold below which the motor is stopped (m/s)
 MOTOR_DEADBAND = 0.05
@@ -115,6 +116,9 @@ class EsibotDriver(Node):
         # ── Motor PWM handles (set in _setup_motor_gpio) ──────────────────────
         self._pwm_ena = None
         self._pwm_enb = None
+
+        # ── Encoder debug counter (log ticks every 2 s) ───────────────────────
+        self._debug_tick = 0
 
         # ── cmd_vel watchdog ──────────────────────────────────────────────────
         self._last_cmd_time = self.get_clock().now()
@@ -185,8 +189,8 @@ class EsibotDriver(Node):
             return
         import RPi.GPIO as GPIO
 
-        duty_left  = min(abs(v_left)  / MAX_LINEAR_VEL * 100.0, 100.0)
-        duty_right = min(abs(v_right) / MAX_LINEAR_VEL * 100.0, 100.0)
+        duty_left  = min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY)
+        duty_right = min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY)
 
         # Left motor direction
         if v_left > MOTOR_DEADBAND:
@@ -334,6 +338,15 @@ class EsibotDriver(Node):
 
         self._prev_left  = curr_left
         self._prev_right = curr_right
+
+        # Log encoder ticks every 2 s to confirm hardware is counting
+        self._debug_tick += 1
+        if self._debug_tick >= 40:
+            self._debug_tick = 0
+            self.get_logger().info(
+                f'Encoders — L:{curr_left} ticks  R:{curr_right} ticks  '
+                f'| pose x={self.x:.3f} y={self.y:.3f} θ={math.degrees(self.theta):.1f}°'
+            )
 
         delta_center = (delta_right + delta_left)  / 2.0
         delta_theta  = (delta_right - delta_left)  / WHEEL_BASE
