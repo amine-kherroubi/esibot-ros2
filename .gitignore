@@ -12,6 +12,10 @@ __pycache__/
 *.mcap
 metadata.yaml
 
+# dashboard — build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
 # esibot_vision — fichiers locaux non versionnés
 esibot_vision/runs/
 esibot_vision/dataset/
