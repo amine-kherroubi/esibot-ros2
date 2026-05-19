@@ -4,7 +4,53 @@ import { useRosbridgeContext } from '../context/RosbridgeContext'
 import { CMD_VEL } from '../config.js'
 
 const PUBLISH_HZ = 10
-const STOP_DELAY = 200 // ms after key release before stopping
+const STOP_DELAY = 200
+
+const ArrowUp = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m18 15-6-6-6 6"/>
+  </svg>
+)
+
+const ArrowDown = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m6 9 6 6 6-6"/>
+  </svg>
+)
+
+const ArrowLeft = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m15 18-6-6 6-6"/>
+  </svg>
+)
+
+const ArrowRight = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="m9 18 6-6-6-6"/>
+  </svg>
+)
+
+const StopIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <rect x="4" y="4" width="16" height="16" rx="2"/>
+  </svg>
+)
+
+function TeleopBtn({ icon, keyHint, active, onDown, onUp, disabled, label }) {
+  return (
+    <button
+      className={`teleop-btn${active ? ' pressed' : ''}`}
+      onPointerDown={onDown}
+      onPointerUp={onUp}
+      onPointerLeave={onUp}
+      disabled={disabled}
+      aria-label={label}
+    >
+      {icon}
+      <span className="teleop-key-hint" aria-hidden="true">{keyHint}</span>
+    </button>
+  )
+}
 
 export default function Teleop() {
   const { rosRef, connected } = useRosbridgeContext()
@@ -13,8 +59,8 @@ export default function Teleop() {
   const loopRef    = useRef(null)
   const stopTimer  = useRef(null)
   const [active, setActive] = useState({ fwd: false, bwd: false, lft: false, rgt: false })
+  const [velocity, setVelocity] = useState({ lin: 0, ang: 0 })
 
-  // Setup publisher
   useEffect(() => {
     if (!connected || !rosRef.current) {
       pubRef.current = null
@@ -33,6 +79,7 @@ export default function Teleop() {
       linear:  { x: linear,  y: 0, z: 0 },
       angular: { x: 0, y: 0, z: angular }
     }))
+    setVelocity({ lin: linear, ang: angular })
   }, [])
 
   const stopRobot = useCallback(() => {
@@ -64,6 +111,7 @@ export default function Teleop() {
       loopRef.current = null
     }
     setActive({ fwd: false, bwd: false, lft: false, rgt: false })
+    setVelocity({ lin: 0, ang: 0 })
   }, [])
 
   useEffect(() => {
@@ -93,11 +141,9 @@ export default function Teleop() {
     }
   }, [startLoop, stopLoop, stopRobot])
 
-  // Button press handlers
   const btnDown = (lin, ang) => {
     if (stopTimer.current) { clearTimeout(stopTimer.current); stopTimer.current = null }
     startLoop()
-    // Override keys simulation via direct immediate publish
     publish(lin, ang)
   }
   const btnUp = () => {
@@ -105,31 +151,45 @@ export default function Teleop() {
     stopRobot()
   }
 
-  const Btn = ({ label, lin, ang, activeKey }) => (
-    <button
-      className={`teleop-btn${active[activeKey] ? ' pressed' : ''}`}
-      onPointerDown={() => btnDown(lin, ang)}
-      onPointerUp={btnUp}
-      onPointerLeave={btnUp}
-      disabled={!connected}
-    >
-      {label}
-    </button>
-  )
+  const isMoving = velocity.lin !== 0 || velocity.ang !== 0
 
   return (
     <div className="card teleop-card">
-      <div className="card-title">Teleop <span className="hint">(WASD / arrows)</span></div>
+      <div className="card-title">
+        <span className="card-title-left">
+          <svg className="card-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+          <h2 className="card-heading">Teleop</h2>
+        </span>
+        <span className="hint">WASD / Arrows</span>
+      </div>
       <div className="teleop-grid">
         <div />
-        <Btn label="▲" lin={CMD_VEL.LINEAR_SPEED}  ang={0}                    activeKey="fwd" />
+        <TeleopBtn icon={<ArrowUp />}    keyHint="W" active={active.fwd} onDown={() => btnDown(CMD_VEL.LINEAR_SPEED, 0)}                      onUp={btnUp} disabled={!connected} label="Move forward" />
         <div />
-        <Btn label="◄" lin={0}                      ang={CMD_VEL.ANGULAR_SPEED} activeKey="lft" />
-        <button className="teleop-btn stop-btn" onPointerDown={stopRobot} disabled={!connected}>■</button>
-        <Btn label="►" lin={0}                      ang={-CMD_VEL.ANGULAR_SPEED} activeKey="rgt" />
+        <TeleopBtn icon={<ArrowLeft />}  keyHint="A" active={active.lft} onDown={() => btnDown(0, CMD_VEL.ANGULAR_SPEED)}                     onUp={btnUp} disabled={!connected} label="Turn left" />
+        <button
+          className="teleop-btn stop-btn"
+          onPointerDown={stopRobot}
+          disabled={!connected}
+          aria-label="Emergency stop"
+        >
+          <StopIcon />
+        </button>
+        <TeleopBtn icon={<ArrowRight />} keyHint="D" active={active.rgt} onDown={() => btnDown(0, -CMD_VEL.ANGULAR_SPEED)}                    onUp={btnUp} disabled={!connected} label="Turn right" />
         <div />
-        <Btn label="▼" lin={-CMD_VEL.LINEAR_SPEED} ang={0}                    activeKey="bwd" />
+        <TeleopBtn icon={<ArrowDown />}  keyHint="S" active={active.bwd} onDown={() => btnDown(-CMD_VEL.LINEAR_SPEED, 0)}                     onUp={btnUp} disabled={!connected} label="Move backward" />
         <div />
+      </div>
+      <div className={`teleop-speed${isMoving ? ' active' : ''}`} aria-live="polite" aria-label={`Linear ${velocity.lin.toFixed(1)} meters per second, angular ${velocity.ang.toFixed(1)} radians per second`}>
+        <span className="speed-label">Lin</span>
+        <span className="speed-value">{velocity.lin.toFixed(1)}</span>
+        <span className="speed-unit">m/s</span>
+        <span className="speed-sep" />
+        <span className="speed-label">Ang</span>
+        <span className="speed-value">{velocity.ang.toFixed(1)}</span>
+        <span className="speed-unit">rad/s</span>
       </div>
     </div>
   )
