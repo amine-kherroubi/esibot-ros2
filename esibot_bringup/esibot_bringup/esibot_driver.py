@@ -365,8 +365,12 @@ class EsibotDriver(Node):
         self._vel_angular = angular
         self._last_cmd_time = self.get_clock().now()
 
-        v_right = linear + (angular * WHEEL_BASE / 2.0)
-        v_left  = linear - (angular * WHEEL_BASE / 2.0)
+        if linear == 0.0 and angular != 0.0:
+            v_right = max(0.0,  angular) * WHEEL_BASE
+            v_left  = max(0.0, -angular) * WHEEL_BASE
+        else:
+            v_right = linear + (angular * WHEEL_BASE / 2.0)
+            v_left  = linear - (angular * WHEEL_BASE / 2.0)
 
         self._set_motor(v_left, v_right)
 
