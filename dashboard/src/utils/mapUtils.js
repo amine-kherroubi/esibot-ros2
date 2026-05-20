@@ -116,34 +116,39 @@ export function drawRobot(ctx, cx, cy, yaw, scale) {
 }
 
 /**
- * Draw LIDAR scan: faint rays + bright endpoint dots.
+ * Draw LIDAR scan: faint rays + color-coded endpoint dots.
+ * Dot color: green (far, reliable) → orange → red (close, suspect).
  */
 export function drawScan(ctx, scan, pose, meta, scale) {
   if (!scan) return
-  const { ranges, angle_min, angle_increment, range_max } = scan
+  const { ranges, angle_min, angle_increment, range_min, range_max } = scan
   const { cx: rx, cy: ry } = worldToCanvas(pose.x, pose.y, meta, scale)
 
   ctx.save()
 
-  // Faint rays
-  ctx.strokeStyle = 'rgba(239,68,68,0.2)'
-  ctx.lineWidth = 0.8
   for (let i = 0; i < ranges.length; i++) {
     const r = ranges[i]
-    if (!isFinite(r) || r <= 0 || r >= range_max) continue
-    const angle = angle_min + i * angle_increment + pose.yaw
-    const { cx, cy } = worldToCanvas(pose.x + r * Math.cos(angle), pose.y + r * Math.sin(angle), meta, scale)
-    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(cx, cy); ctx.stroke()
-  }
+    if (!isFinite(r) || r < range_min || r >= range_max) continue
 
-  // Bright endpoint dots
-  ctx.fillStyle = 'rgba(239,68,68,0.95)'
-  for (let i = 0; i < ranges.length; i++) {
-    const r = ranges[i]
-    if (!isFinite(r) || r <= 0 || r >= range_max) continue
     const angle = angle_min + i * angle_increment + pose.yaw
-    const { cx, cy } = worldToCanvas(pose.x + r * Math.cos(angle), pose.y + r * Math.sin(angle), meta, scale)
-    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2 * Math.PI); ctx.fill()
+    const wx = pose.x + r * Math.cos(angle)
+    const wy = pose.y + r * Math.sin(angle)
+    const { cx, cy } = worldToCanvas(wx, wy, meta, scale)
+
+    // Color: green (far) → yellow → red (close to range_min)
+    const t = Math.max(0, Math.min(1, (r - range_min) / (range_max * 0.3)))
+    const red   = Math.round(255 * (1 - t * 0.4))
+    const green = Math.round(180 * t)
+    const color = `rgba(${red},${green},40`
+
+    // Faint ray
+    ctx.strokeStyle = `${color},0.15)`
+    ctx.lineWidth = 0.8
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(cx, cy); ctx.stroke()
+
+    // Endpoint dot
+    ctx.fillStyle = `${color},0.9)`
+    ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, 2 * Math.PI); ctx.fill()
   }
 
   ctx.restore()

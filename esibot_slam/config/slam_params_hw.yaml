@@ -72,7 +72,7 @@ slam_toolbox:
     # ── Minimum time between processed scans ────────────────────────────────
     # MG996R sweeps ±100° (21 steps × 10° × ~325ms/step) in ~7 s.
     # 6.5 s avoids re-processing a stale queued scan while keeping every sweep.
-    minimum_time_interval: 6.5
+    minimum_time_interval: 3.0
 
     # ── Minimum robot displacement to trigger SLAM update ───────────────────
     # Keep values low because the robot moves slowly with DC motors.

@@ -34,27 +34,30 @@ export function useMap() {
     let exploredCells = 0
     for (let i = 0; i < data.length; i++) {
       const v = data[i]
-      let r, g, b
+      let r, g, b, a
       if (v === -1) {
-        r = 100; g = 108; b = 120  // unknown — blue-gray
+        // Unknown: medium gray
+        r = 128; g = 128; b = 128; a = 255
       } else if (v === 0) {
-        r = 240; g = 244; b = 250  // free — off-white
+        // Free: white
+        r = 255; g = 255; b = 255; a = 255
         exploredCells++
       } else {
-        // occupied — near-black, stronger at higher probability
-        const t = v / 100
-        r = Math.round((1 - t) * 60)
-        g = Math.round((1 - t) * 60)
-        b = Math.round((1 - t) * 70)
+        // Occupied: black, opacity scales with probability
+        // High probability (100) → fully black; low (1) → dark gray
+        const t = Math.min(v / 100, 1)
+        const shade = Math.round((1 - t) * 80)  // 80 (light gray) → 0 (black)
+        r = shade; g = shade; b = shade; a = 255
         exploredCells++
       }
+      // ROS map row 0 = bottom of world; canvas row 0 = top — flip vertically
       const row = Math.floor(i / width)
       const col = i % width
       const dst = (height - 1 - row) * width + col
       pixels[dst * 4 + 0] = r
       pixels[dst * 4 + 1] = g
       pixels[dst * 4 + 2] = b
-      pixels[dst * 4 + 3] = 255
+      pixels[dst * 4 + 3] = a
     }
     ctx.putImageData(imgData, 0, 0)
 

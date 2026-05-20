@@ -65,12 +65,12 @@ def generate_launch_description():
     )
     use_composition_arg = DeclareLaunchArgument(
         "use_composition",
-        default_value="false",
+        default_value="False",
         description="Use composable node container",
     )
     use_respawn_arg = DeclareLaunchArgument(
         "use_respawn",
-        default_value="false",
+        default_value="False",
         description="Respawn nodes if they crash",
     )
     use_rviz_arg = DeclareLaunchArgument(

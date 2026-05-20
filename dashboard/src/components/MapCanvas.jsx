@@ -168,7 +168,9 @@ export default function MapCanvas() {
       const w = canvas.width
       const h = canvas.height
 
-      ctx.imageSmoothingEnabled = false
+      // Bilinear smoothing at low zoom (zoomed out), crisp pixels when zoomed in
+      ctx.imageSmoothingEnabled = scaleRef.current < 2
+      ctx.imageSmoothingQuality = 'high'
       ctx.clearRect(0, 0, w, h)
       ctx.fillStyle = theme === 'light' ? '#e8edf4' : '#0a0f1e'
       ctx.fillRect(0, 0, w, h)
