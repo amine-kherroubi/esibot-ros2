@@ -1,20 +1,25 @@
 """
-EsiBot Nav2 bringup (localization + navigation) on a pre-built map.
+EsiBot Nav2 launch file: localization (AMCL) + navigation on a pre-built map.
+
+Launches nav2_bringup with slam:=False and use_localization:=True.
 
 Usage:
   ros2 launch esibot_navigation nav2.launch.py
 
-Override map or params:
+Override map or parameters:
   ros2 launch esibot_navigation nav2.launch.py \
       map:=/absolute/path/to/your_map.yaml \
       params_file:=/absolute/path/to/nav2_params.yaml
+
+Override scan topic (e.g., for simulation):
+  ros2 launch esibot_navigation nav2.launch.py scan_topic:=ultrasound_raw
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -29,10 +34,8 @@ def generate_launch_description():
     default_map = os.path.join(pkg_share, "maps", "esibot_map.yaml")
     default_params = os.path.join(pkg_share, "config", "nav2_params.yaml")
     default_rviz = os.path.join(nav2_bringup_dir, "rviz", "nav2_default_view.rviz")
-    headless = not (
-        os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    )
-    default_use_rviz = "false" if headless else "true"
+    # RViz disabled by default to reduce resource usage; enable with use_rviz:=true
+    default_use_rviz = "false"
 
     # Launch arguments
     map_arg = DeclareLaunchArgument(
@@ -47,7 +50,7 @@ def generate_launch_description():
     )
     scan_topic_arg = DeclareLaunchArgument(
         "scan_topic",
-        default_value="scan",
+        default_value="/scan",
         description="LaserScan topic to use for localization and costmaps",
     )
     use_sim_time_arg = DeclareLaunchArgument(
@@ -81,25 +84,18 @@ def generate_launch_description():
         description="Full path to RViz2 config",
     )
 
-    # Rewrite YAML to allow scan topic overrides (keeps default 'scan' standard)
+    # Apply scan_topic launch argument to all relevant parameters in nav2_params.yaml
+    # RewrittenYaml finds and replaces leaf keys: "scan_topic" (for amcl) and "topic" (for costmap observation sources)
     configured_params = RewrittenYaml(
         source_file=LaunchConfiguration("params_file"),
         param_rewrites={
-            "amcl.ros__parameters.scan_topic": LaunchConfiguration("scan_topic"),
-            "local_costmap.local_costmap.ros__parameters.voxel_layer.scan.topic": LaunchConfiguration(
-                "scan_topic"
-            ),
-            "global_costmap.global_costmap.ros__parameters.obstacle_layer.scan.topic": LaunchConfiguration(
-                "scan_topic"
-            ),
-            "collision_monitor.ros__parameters.scan.topic": LaunchConfiguration(
-                "scan_topic"
-            ),
+            "scan_topic": LaunchConfiguration("scan_topic"),  # Applies to amcl and behavior server
+            "topic": LaunchConfiguration("scan_topic"),        # Applies to costmap observation sources
         },
         convert_types=True,
     )
 
-    # Nav2 bringup (localization + navigation)
+    # Launch nav2_bringup in localization mode (AMCL) with navigation stack
     bringup = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(nav2_bringup_dir, "launch", "bringup_launch.py")
@@ -111,8 +107,8 @@ def generate_launch_description():
             "use_sim_time": LaunchConfiguration("use_sim_time"),
             "params_file": configured_params,
             "autostart": LaunchConfiguration("autostart"),
-            "use_composition": "False",
-            "use_respawn": "False",
+            "use_composition": LaunchConfiguration("use_composition"),
+            "use_respawn": LaunchConfiguration("use_respawn"),
             "log_level": "info",
         }.items(),
     )
@@ -136,18 +132,8 @@ def generate_launch_description():
         use_respawn_arg,
         use_rviz_arg,
         rviz_config_arg,
+        bringup,
+        rviz,
     ]
-
-    if headless:
-        actions.append(
-            LogInfo(
-                msg=(
-                    "[nav2.launch.py] No DISPLAY/WAYLAND_DISPLAY detected — "
-                    "defaulting use_rviz:=false."
-                )
-            )
-        )
-
-    actions.extend([bringup, rviz])
 
     return LaunchDescription(actions)
