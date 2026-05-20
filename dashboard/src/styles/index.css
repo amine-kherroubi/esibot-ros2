@@ -119,6 +119,18 @@
   border-color: rgba(15, 23, 42, 0.06);
 }
 
+[data-theme="light"] .map-update-badge {
+  background: rgba(2, 132, 199, 0.06);
+  border-color: rgba(2, 132, 199, 0.15);
+  color: #0284c7;
+}
+
+[data-theme="light"] .map-update-badge.fresh {
+  background: rgba(22, 163, 74, 0.08);
+  border-color: rgba(22, 163, 74, 0.2);
+  color: #16a34a;
+}
+
 [data-theme="light"] .map-btn {
   background: rgba(255, 255, 255, 0.6);
   border-color: rgba(15, 23, 42, 0.08);
@@ -637,6 +649,25 @@ html, body, #root {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.map-update-badge {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px solid rgba(56, 189, 248, 0.12);
+  border-radius: 4px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  white-space: nowrap;
+  transition: background 0.4s, color 0.4s, border-color 0.4s;
+}
+
+.map-update-badge.fresh {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.25);
+  color: var(--green);
 }
 
 .map-btn {

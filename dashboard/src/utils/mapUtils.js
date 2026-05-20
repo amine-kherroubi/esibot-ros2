@@ -116,13 +116,7 @@ export function drawRobot(ctx, cx, cy, yaw, scale) {
 }
 
 /**
- * Draw LIDAR scan rays on the canvas.
- *
- * @param {CanvasRenderingContext2D} ctx
- * @param {object} scan  — { ranges, angle_min, angle_increment, range_max }
- * @param {object} pose  — { x, y, yaw }
- * @param {object} meta  — map metadata
- * @param {number} scale
+ * Draw LIDAR scan: faint rays + bright endpoint dots.
  */
 export function drawScan(ctx, scan, pose, meta, scale) {
   if (!scan) return
@@ -130,24 +124,106 @@ export function drawScan(ctx, scan, pose, meta, scale) {
   const { cx: rx, cy: ry } = worldToCanvas(pose.x, pose.y, meta, scale)
 
   ctx.save()
-  ctx.strokeStyle = 'rgba(239,68,68,0.6)'
-  ctx.lineWidth = 1
 
+  // Faint rays
+  ctx.strokeStyle = 'rgba(239,68,68,0.2)'
+  ctx.lineWidth = 0.8
   for (let i = 0; i < ranges.length; i++) {
     const r = ranges[i]
     if (!isFinite(r) || r <= 0 || r >= range_max) continue
-
     const angle = angle_min + i * angle_increment + pose.yaw
-    const wx = pose.x + r * Math.cos(angle)
-    const wy = pose.y + r * Math.sin(angle)
-    const { cx, cy } = worldToCanvas(wx, wy, meta, scale)
-
-    ctx.beginPath()
-    ctx.moveTo(rx, ry)
-    ctx.lineTo(cx, cy)
-    ctx.stroke()
+    const { cx, cy } = worldToCanvas(pose.x + r * Math.cos(angle), pose.y + r * Math.sin(angle), meta, scale)
+    ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(cx, cy); ctx.stroke()
   }
 
+  // Bright endpoint dots
+  ctx.fillStyle = 'rgba(239,68,68,0.95)'
+  for (let i = 0; i < ranges.length; i++) {
+    const r = ranges[i]
+    if (!isFinite(r) || r <= 0 || r >= range_max) continue
+    const angle = angle_min + i * angle_increment + pose.yaw
+    const { cx, cy } = worldToCanvas(pose.x + r * Math.cos(angle), pose.y + r * Math.sin(angle), meta, scale)
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 2 * Math.PI); ctx.fill()
+  }
+
+  ctx.restore()
+}
+
+/**
+ * Draw a 1m grid over the map (inside pan/translate block).
+ */
+export function drawGrid(ctx, meta, scale, theme) {
+  if (!meta) return
+  const { origin, resolution, width, height } = meta
+  const ox = origin.position.x
+  const oy = origin.position.y
+  const color = theme === 'light' ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.06)'
+
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 0.5
+
+  const xMax = ox + width * resolution
+  const yMax = oy + height * resolution
+
+  for (let wx = Math.ceil(ox); wx <= xMax; wx++) {
+    const px = (wx - ox) / resolution * scale
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, height * scale); ctx.stroke()
+  }
+  for (let wy = Math.ceil(oy); wy <= yMax; wy++) {
+    const py = (height - (wy - oy) / resolution) * scale
+    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(width * scale, py); ctx.stroke()
+  }
+
+  ctx.restore()
+}
+
+/**
+ * Draw a scale bar HUD in the bottom-right corner (outside pan/translate block).
+ */
+export function drawScaleBar(ctx, meta, scale, cw, ch, theme) {
+  if (!meta) return
+  const pxPerMeter = scale / meta.resolution
+  if (pxPerMeter < 4) return
+
+  let barM = 1
+  if (pxPerMeter * 5 <= 100) barM = 5
+  else if (pxPerMeter * 2 <= 100) barM = 2
+
+  const barPx = barM * pxPerMeter
+  const x = cw - barPx - 14
+  const y = ch - 14
+  const tk = 5
+
+  ctx.save()
+  const stroke = theme === 'light' ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.7)'
+  ctx.strokeStyle = stroke
+  ctx.fillStyle   = stroke
+  ctx.lineWidth = 1.5
+  ctx.font = '10px Inter, sans-serif'
+  ctx.textAlign = 'center'
+
+  ctx.beginPath()
+  ctx.moveTo(x, y - tk); ctx.lineTo(x, y)
+  ctx.lineTo(x + barPx, y); ctx.lineTo(x + barPx, y - tk)
+  ctx.stroke()
+  ctx.fillText(`${barM}m`, x + barPx / 2, y - tk - 3)
+  ctx.restore()
+}
+
+/**
+ * Draw map stats overlay in the bottom-left corner (outside pan/translate block).
+ */
+export function drawMapInfo(ctx, stats, ch, theme) {
+  if (!stats || !stats.totalCells) return
+  const pct = Math.round(stats.exploredCells / stats.totalCells * 100)
+  const text = `${stats.widthM.toFixed(1)} × ${stats.heightM.toFixed(1)} m  ·  ${pct}% explored`
+
+  ctx.save()
+  ctx.font = '10px Inter, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillStyle = theme === 'light' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.4)'
+  ctx.fillText(text, 10, ch - 8)
   ctx.restore()
 }
 

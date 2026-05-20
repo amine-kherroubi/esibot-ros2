@@ -1,14 +1,12 @@
 import React, { useState } from 'react'
 import { useCamera } from '../hooks/useCamera'
+import { ESP32_STREAM_URL } from '../config'
 
-const TOPICS = {
-  'Annotated': '/camera/image_annotated',
-  'Raw':       '/camera/compressed'
-}
+const TABS = ['Annotated', 'Raw']
 
 export default function VideoFeed() {
   const [selected, setSelected] = useState('Annotated')
-  const { imgSrc } = useCamera(TOPICS[selected])
+  const { imgSrc } = useCamera(selected === 'Annotated' ? '/camera/image_annotated' : null)
 
   return (
     <div className="card video-card">
@@ -20,7 +18,7 @@ export default function VideoFeed() {
           <h2 className="card-heading">Camera</h2>
         </span>
         <div className="topic-switcher">
-          {Object.keys(TOPICS).map((k) => (
+          {TABS.map((k) => (
             <button
               key={k}
               className={`topic-btn${selected === k ? ' active' : ''}`}
@@ -33,8 +31,10 @@ export default function VideoFeed() {
       </div>
 
       <div className="video-frame" aria-live="polite">
-        {imgSrc ? (
-          <img src={imgSrc} alt={`${selected} camera feed`} className="video-img" />
+        {selected === 'Raw' ? (
+          <img src={ESP32_STREAM_URL} alt="raw camera feed" className="video-img" />
+        ) : imgSrc ? (
+          <img src={imgSrc} alt="annotated camera feed" className="video-img" />
         ) : (
           <div className="video-placeholder">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

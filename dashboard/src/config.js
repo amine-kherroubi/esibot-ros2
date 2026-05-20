@@ -10,3 +10,5 @@ export const CMD_VEL = {
 export const BATTERY_CAPACITY_MINUTES = 45
 
 export const SCAN_OVERLAY = true
+
+export const ESP32_STREAM_URL = 'http://10.225.87.99:8888/stream'

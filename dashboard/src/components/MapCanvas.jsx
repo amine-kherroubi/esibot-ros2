@@ -5,10 +5,12 @@ import { useOdom } from '../hooks/useOdom'
 import { useScan } from '../hooks/useScan'
 import { useRosbridgeContext } from '../context/RosbridgeContext'
 import { useTheme } from '../context/ThemeContext'
+import { useToast } from './Toast'
 import { SCAN_OVERLAY } from '../config.js'
 import {
   worldToCanvas, canvasToWorld,
-  drawRobot, drawScan, drawPath, drawGoal
+  drawRobot, drawScan, drawPath, drawGoal,
+  drawGrid, drawScaleBar, drawMapInfo
 } from '../utils/mapUtils'
 
 const MAX_PATH_LEN = 500
@@ -17,11 +19,12 @@ const FPS = 30
 export default function MapCanvas() {
   const canvasRef   = useRef(null)
   const wrapRef     = useRef(null)
-  const { offscreenRef, mapMetaRef } = useMap()
+  const { offscreenRef, mapMetaRef, mapStatsRef, lastUpdateTimeRef, updateSeq } = useMap()
   const { pose } = useOdom()
   const { scan } = useScan()
   const { rosRef, connected } = useRosbridgeContext()
   const { theme } = useTheme()
+  const toast = useToast()
 
   const pathRef     = useRef([])
   const scaleRef    = useRef(2)
@@ -37,6 +40,39 @@ export default function MapCanvas() {
   const goalModeRef = useRef(false)
 
   const [mapSaveStatus, setMapSaveStatus] = useState(null)
+
+  // "Updated Xs ago" badge
+  const [agoLabel, setAgoLabel] = useState(null)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const t = lastUpdateTimeRef.current
+      if (!t) { setAgoLabel(null); return }
+      const s = Math.round((Date.now() - t) / 1000)
+      if (s < 5)       setAgoLabel('just now')
+      else if (s < 60) setAgoLabel(`${s}s ago`)
+      else             setAgoLabel(`${Math.round(s / 60)}m ago`)
+    }, 1000)
+    return () => clearInterval(id)
+  }, [lastUpdateTimeRef])
+
+  // Toast notification on new map data (debounced 5s, only when area grows)
+  const lastNotifiedRef = useRef({ explored: 0, time: 0 })
+  useEffect(() => {
+    if (updateSeq === 0) return
+    const now = Date.now()
+    const { exploredCells, totalCells, widthM, heightM } = mapStatsRef.current
+    const { explored: prev, time: prevTime } = lastNotifiedRef.current
+    const delta = exploredCells - prev
+    if (prevTime === 0 || (delta > 0 && now - prevTime > 5000)) {
+      lastNotifiedRef.current = { explored: exploredCells, time: now }
+      const pct = Math.round(exploredCells / Math.max(totalCells, 1) * 100)
+      toast(
+        `Map updated — ${pct}% explored (${widthM.toFixed(1)} × ${heightM.toFixed(1)} m)`,
+        prevTime === 0 ? 'success' : 'info',
+        2500
+      )
+    }
+  }, [updateSeq, mapStatsRef, toast])
 
   useEffect(() => { goalModeRef.current = goalMode }, [goalMode])
 
@@ -132,6 +168,7 @@ export default function MapCanvas() {
       const w = canvas.width
       const h = canvas.height
 
+      ctx.imageSmoothingEnabled = false
       ctx.clearRect(0, 0, w, h)
       ctx.fillStyle = theme === 'light' ? '#e8edf4' : '#0a0f1e'
       ctx.fillRect(0, 0, w, h)
@@ -154,6 +191,7 @@ export default function MapCanvas() {
         ctx.save()
         ctx.translate(panRef.current.x, panRef.current.y)
         ctx.drawImage(offscreen, 0, 0, offscreen.width * s, offscreen.height * s)
+        drawGrid(ctx, meta, s, theme)
         drawPath(ctx, pathRef.current, meta, s)
         if (SCAN_OVERLAY) drawScan(ctx, scan, pose, meta, s)
         const { cx, cy } = worldToCanvas(pose.x, pose.y, meta, s)
@@ -163,6 +201,8 @@ export default function MapCanvas() {
           drawGoal(ctx, gcx, gcy)
         }
         ctx.restore()
+        drawScaleBar(ctx, meta, s, w, h, theme)
+        drawMapInfo(ctx, mapStatsRef.current, h, theme)
       } else {
         const cx = w / 2 + panRef.current.x
         const cy = h / 2 + panRef.current.y
@@ -202,7 +242,7 @@ export default function MapCanvas() {
     rafId = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(rafId)
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [mapMetaRef, offscreenRef, pose, scan, autoCenter, goalPt, theme])
+  }, [mapMetaRef, offscreenRef, mapStatsRef, pose, scan, autoCenter, goalPt, theme, updateSeq])
 
   const onWheel = useCallback((e) => {
     const factor = e.deltaY < 0 ? 1.15 : 0.87
@@ -324,6 +364,11 @@ export default function MapCanvas() {
             <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/>
           </svg>
           <h2 className="card-heading">Map</h2>
+          {agoLabel && (
+            <span className={`map-update-badge${agoLabel === 'just now' ? ' fresh' : ''}`}>
+              {agoLabel}
+            </span>
+          )}
         </span>
         <div className="map-controls">
           {statusLabel && (

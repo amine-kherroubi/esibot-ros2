@@ -52,9 +52,8 @@ slam_toolbox:
     transform_publish_period: 0.05
 
     # ── Map update interval ─────────────────────────────────────────────────
-    # 5 s between map reconstructions — important to keep the RPi 4 responsive.
-    # Decrease to 3.0 if you have the 4 GB RAM model and want faster updates.
-    map_update_interval: 5.0
+    # 2 s between map reconstructions.
+    map_update_interval: 2.0
 
     # ── Map resolution ──────────────────────────────────────────────────────
     # 5 cm per cell — standard for indoor SLAM.
@@ -71,22 +70,22 @@ slam_toolbox:
     throttle_scans: 1
 
     # ── Minimum time between processed scans ────────────────────────────────
-    # MG996R sweeps ±100° (21 steps × 150 ms) in ~3 s.
-    # 2.5 s avoids re-processing a stale queued scan while keeping every sweep.
-    minimum_time_interval: 2.5
+    # MG996R sweeps ±100° (21 steps × 10° × ~325ms/step) in ~7 s.
+    # 6.5 s avoids re-processing a stale queued scan while keeping every sweep.
+    minimum_time_interval: 6.5
 
     # ── Minimum robot displacement to trigger SLAM update ───────────────────
     # Keep values low because the robot moves slowly with DC motors.
-    minimum_travel_distance: 0.10 # 10 cm
-    minimum_travel_heading: 0.20 # ~11 degrees
+    minimum_travel_distance: 0.05 # 5 cm
+    minimum_travel_heading: 0.10  # ~6 degrees
 
     # ── Scan matching ───────────────────────────────────────────────────────
     use_scan_matching: true
     use_scan_barycenter: true
 
     # ── Scan buffer ─────────────────────────────────────────────────────────
-    # Reduce scan_buffer_size to 5 if running on the 2 GB RAM model.
-    scan_buffer_size: 10
+    # Reduce scan_buffer_size to 10 if running on the 2 GB RAM model.
+    scan_buffer_size: 20
     scan_buffer_maximum_scan_distance: 4.0
 
     # ── Fine matching parameters ────────────────────────────────────────────
@@ -96,7 +95,7 @@ slam_toolbox:
     angle_variance_penalty: 1.0
 
     fine_search_angle_offset: 0.00349
-    coarse_search_angle_offset: 0.349
+    coarse_search_angle_offset: 0.523
     coarse_angle_resolution: 0.0349
     minimum_angle_penalty: 0.9
     minimum_distance_penalty: 0.5

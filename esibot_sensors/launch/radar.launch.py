@@ -34,11 +34,11 @@ def generate_launch_description():
 
     sweep_period_arg = DeclareLaunchArgument(
         "sweep_period",
-        default_value="3.0",
+        default_value="8.0",
         description=(
             "Seconds between sweep triggers. "
             "Must be longer than the worst-case sweep duration "
-            "(19 steps x 0.11 s ~ 2.1 s). Default 3.0 s gives margin."
+            "(21 steps × ~325ms/step ≈ 7s). Default 8.0 s gives margin."
         ),
     )
 

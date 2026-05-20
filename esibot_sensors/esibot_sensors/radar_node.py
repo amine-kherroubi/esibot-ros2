@@ -3,7 +3,7 @@
 EsibotSensors - HC-SR04 sweep node
 ==================================
 Architecture réelle (wiring diagram v3) :
-  - RPi GPIO12 → 1kΩ → MG996R signal  (software PWM 50Hz, RPi.GPIO)
+  - RPi GPIO12 → 1kΩ → MG996R signal  (pigpio hardware DMA PWM 50Hz)
   - RPi GPIO23 → HC-SR04 TRIG
   - RPi GPIO25 ← HC-SR04 ECHO (via diviseur R1=1.2kΩ/R2=1.5kΩ → 2.78V)
   - RPi GPIO24 ← right wheel encoder D0 (moved here from GPIO18)
@@ -19,7 +19,7 @@ from sensor_msgs.msg import LaserScan, JointState
 
 from esibot_logging import get_logger, setup_logging
 
-# ── GPIO (RPi : TRIG + ECHO) ─────────────────────────────────────────────────
+# ── GPIO (RPi : TRIG + ECHO via RPi.GPIO, servo via pigpio) ─────────────────
 try:
     import RPi.GPIO as GPIO
     HARDWARE_AVAILABLE = True
@@ -29,7 +29,14 @@ except ImportError as exc:
     HARDWARE_AVAILABLE = False
     GPIO_IMPORT_ERROR = exc
 
-GPIO_SERVO_PIN = 12   # RPi Pin 32 — software PWM 50Hz, 1kΩ series resistor
+try:
+    import pigpio
+    PIGPIO_AVAILABLE = True
+except ImportError:
+    pigpio = None
+    PIGPIO_AVAILABLE = False
+
+GPIO_SERVO_PIN = 12   # RPi Pin 32 — pigpio hardware DMA PWM 50Hz, 1kΩ series resistor
 
 
 class EsibotSensors(Node):
@@ -43,21 +50,23 @@ class EsibotSensors(Node):
         # ── Géométrie du scan ────────────────────────────────────────────────
         self.angle_min = -math.radians(100)  # -100° → droite
         self.angle_max =  math.radians(100)  # +100° → gauche
-        self.angle_increment = math.radians(10)  # 10°/step → 21 mesures
+        self.angle_increment = math.radians(10)  # 10°/step → 21 mesures (beam HC-SR04 ≈ 30°)
 
         # ── Plage valide HC-SR04 (datasheet) ────────────────────────────────
         self.range_min = 0.02   # 2 cm
         self.range_max = 4.00   # 400 cm
 
         # ── Paramètres ROS ───────────────────────────────────────────────────
-        self.declare_parameter("trig_pin",     23)   # RPi Pin 16 → HC-SR04 TRIG
-        self.declare_parameter("echo_pin",     25)   # RPi Pin 22 → diviseur → HC-SR04 ECHO
-        self.declare_parameter("sweep_period",  3.0)
-        self.declare_parameter("sim_mode",     False)
+        self.declare_parameter("trig_pin",      23)   # RPi Pin 16 → HC-SR04 TRIG
+        self.declare_parameter("echo_pin",      25)   # RPi Pin 22 → diviseur → HC-SR04 ECHO
+        self.declare_parameter("sweep_period",   8.0) # 21 steps × ~325ms ≈ 7s
+        self.declare_parameter("median_reads",  3)    # lectures par angle, retourne la médiane
+        self.declare_parameter("sim_mode",      False)
 
-        self.trig_pin      = self.get_parameter("trig_pin").value
-        self.echo_pin      = self.get_parameter("echo_pin").value
-        self._sweep_period = float(self.get_parameter("sweep_period").value)
+        self.trig_pin        = self.get_parameter("trig_pin").value
+        self.echo_pin        = self.get_parameter("echo_pin").value
+        self._sweep_period   = float(self.get_parameter("sweep_period").value)
+        self._median_reads   = int(self.get_parameter("median_reads").value)
 
         # ── Init GPIO RPi (TRIG + ECHO seulement) ───────────────────────────
         if HARDWARE_AVAILABLE:
@@ -74,17 +83,44 @@ class EsibotSensors(Node):
                 f"RPi.GPIO introuvable — mode SIMULATION actif. ({GPIO_IMPORT_ERROR})"
             )
 
-        # ── Servo PWM sur GPIO12 (RPi.GPIO software PWM 50Hz) ───────────────
-        self._servo_pwm = None
+        # ── Servo sur GPIO12 — pigpio hardware DMA PWM (fallback RPi.GPIO) ────
+        self._pi         = None   # pigpio instance
+        self._servo_pwm  = None   # RPi.GPIO fallback
+        self._current_pulse_us = 1500  # track position for smooth ramp
+
         if HARDWARE_AVAILABLE:
-            try:
-                GPIO.setup(GPIO_SERVO_PIN, GPIO.OUT)
-                self._servo_pwm = GPIO.PWM(GPIO_SERVO_PIN, 50)  # 50Hz
-                self._servo_pwm.start(7.5)  # centre (1500µs / 20ms = 7.5%)
-                self.log.info(f"Servo PWM initialisé sur GPIO{GPIO_SERVO_PIN} (50Hz)")
-            except Exception as exc:
-                self._servo_pwm = None
-                self.log.error(f"Erreur init servo PWM : {exc}")
+            if PIGPIO_AVAILABLE:
+                try:
+                    self._pi = pigpio.pi()
+                    if not self._pi.connected:
+                        self._pi = None
+                        self.log.error(
+                            "pigpiod non démarré — sudo systemctl start pigpiod. "
+                            "Fallback vers RPi.GPIO software PWM."
+                        )
+                    else:
+                        self._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, 1500)
+                        self.log.info(
+                            f"pigpio servo initialisé sur GPIO{GPIO_SERVO_PIN} "
+                            "(hardware DMA PWM — jitter < 1µs)"
+                        )
+                except Exception as exc:
+                    self._pi = None
+                    self.log.error(f"Erreur init pigpio : {exc}")
+
+            if self._pi is None:
+                # Fallback : RPi.GPIO software PWM
+                try:
+                    GPIO.setup(GPIO_SERVO_PIN, GPIO.OUT)
+                    self._servo_pwm = GPIO.PWM(GPIO_SERVO_PIN, 50)
+                    self._servo_pwm.start(7.5)
+                    self.log.warning(
+                        f"Servo fallback RPi.GPIO software PWM sur GPIO{GPIO_SERVO_PIN} "
+                        "(jitter élevé — installer pigpio pour un sweep fluide)"
+                    )
+                except Exception as exc:
+                    self._servo_pwm = None
+                    self.log.error(f"Erreur init servo fallback : {exc}")
 
         # ── Ping-pong sweep direction (+1 = min→max, -1 = max→min) ─────────────
         self._sweep_dir = 1
@@ -140,7 +176,7 @@ class EsibotSensors(Node):
             self._joint_state_pub.publish(js)
 
             raw = self.read_distance(angle)
-            dist = raw if self.range_min <= raw <= self.range_max else self.range_max + 1.0
+            dist = raw if self.range_min <= raw <= self.range_max else float('inf')
             ranges_ordered.append(dist)
 
         # LaserScan always published min→max; reverse if backward sweep
@@ -164,37 +200,61 @@ class EsibotSensors(Node):
 
     def read_distance(self, angle: float) -> float:
         """
-        1. Commande le servo MG996R via PWM hardware GPIO12 (pigpio).
-        2. Attend la stabilisation (200ms garantis depuis l'envoi).
-        3. Déclenche le HC-SR04 et retourne la distance (m).
+        1. Commande le servo MG996R via PWM GPIO12.
+        2. Attend 120ms de stabilisation (pas de 5° → course réduite).
+        3. Prend self._median_reads lectures HC-SR04, retourne la médiane.
+           Entre lectures consécutives 20ms de pause (évite les échos croisés).
         """
         if HARDWARE_AVAILABLE:
             t_send = time.time()
-            self._set_servo_angle(angle)
+            self._set_servo_angle(angle)  # pigpio: inclut 50ms de rampe interne
             elapsed = time.time() - t_send
-            remaining = max(0.0, 0.15 - elapsed)
+            remaining = max(0.0, 0.10 - elapsed)  # 100ms total settle (ramp ~50ms + 50ms extra)
             if remaining > 0:
                 time.sleep(remaining)
-            return self.hc_sr04_distance()
+
+            samples = []
+            for i in range(self._median_reads):
+                if i > 0:
+                    time.sleep(0.020)
+                d = self.hc_sr04_distance()
+                if not math.isinf(d):
+                    samples.append(d)
+
+            if not samples:
+                return float('inf')
+            samples.sort()
+            return samples[len(samples) // 2]
         else:
             time.sleep(0.01)
             return 1.0 + random.gauss(0.0, 0.02)
 
-    # ── Servo PWM direct (GPIO12, RPi.GPIO 50Hz) ─────────────────────────────
+    # ── Servo (GPIO12) — pigpio hardware PWM avec rampe douce ───────────────
 
     def _set_servo_angle(self, angle: float):
-        """Convertit l'angle ROS [-π/2, +π/2] en duty cycle 50Hz et l'applique."""
-        if self._servo_pwm is None:
-            return
-        angle_deg  = math.degrees(angle)                      # -100 à +100
-        pulse_us   = 1500.0 + angle_deg * (600.0 / 100.0)    # 900–2100 µs
-        pulse_us   = max(900.0, min(2100.0, pulse_us))
-        duty_cycle = pulse_us / 20000.0 * 100.0               # 5.0–10.0 %
-        try:
-            self._servo_pwm.ChangeDutyCycle(duty_cycle)
-            self.log.debug(f"Servo : {angle_deg:.1f}° → {pulse_us:.0f}µs ({duty_cycle:.2f}%)")
-        except Exception as exc:
-            self.log.error(f"Erreur servo PWM : {exc}")
+        """
+        Déplace le servo vers `angle` avec une rampe en 5 étapes (50ms total).
+        Utilise pigpio DMA PWM si disponible, sinon fallback RPi.GPIO (sans rampe).
+        """
+        angle_deg = math.degrees(angle)
+        target_us = int(max(900.0, min(2100.0, 1500.0 + angle_deg * (600.0 / 100.0))))
+
+        if self._pi is not None:
+            # Rampe fluide : 5 étapes × 10ms = 50ms, interpolation linéaire
+            start_us = self._current_pulse_us
+            for i in range(1, 6):
+                us = int(start_us + (target_us - start_us) * i / 5)
+                self._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, us)
+                time.sleep(0.010)
+            self._current_pulse_us = target_us
+            self.log.debug(f"Servo pigpio : {angle_deg:.1f}° → {target_us}µs")
+        elif self._servo_pwm is not None:
+            duty_cycle = target_us / 20000.0 * 100.0
+            try:
+                self._servo_pwm.ChangeDutyCycle(duty_cycle)
+                self._current_pulse_us = target_us
+            except Exception as exc:
+                self.log.error(f"Erreur servo fallback : {exc}")
 
     # ── HC-SR04 (branché directement sur le RPi) ─────────────────────────────
 
@@ -218,7 +278,7 @@ class EsibotSensors(Node):
         while GPIO.input(self.echo_pin) == 0:
             if time.time() > timeout:
                 self.log.warning("HC-SR04 : timeout front montant ECHO")
-                return self.range_max + 1.0
+                return float('inf')
         start = time.time()
 
         # Attente front descendant ECHO (falling edge) — 200ms for cheap clones
@@ -226,7 +286,7 @@ class EsibotSensors(Node):
         while GPIO.input(self.echo_pin) == 1:
             if time.time() > timeout:
                 self.log.warning("HC-SR04 : timeout front descendant ECHO")
-                return self.range_max + 1.0
+                return float('inf')
         end = time.time()
 
         # Distance = (durée × vitesse_son) / 2  [343 m/s à 20°C]
@@ -243,7 +303,13 @@ def main(args=None):
         pass
     finally:
         if HARDWARE_AVAILABLE:
-            if node._servo_pwm is not None:
+            if node._pi is not None:
+                try:
+                    node._pi.set_servo_pulsewidth(GPIO_SERVO_PIN, 0)
+                    node._pi.stop()
+                except Exception:
+                    pass
+            elif node._servo_pwm is not None:
                 try:
                     node._servo_pwm.stop()
                 except Exception:

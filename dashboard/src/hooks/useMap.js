@@ -1,16 +1,19 @@
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useState } from 'react'
 import ROSLIB from 'roslib'
 import { useRosbridgeContext } from '../context/RosbridgeContext'
 
 /**
  * Subscribes to /map (nav_msgs/OccupancyGrid) and draws it onto an offscreen canvas.
- * Returns { offscreenRef, mapMetaRef } for use in MapCanvas.
+ * Returns { offscreenRef, mapMetaRef, mapStatsRef, lastUpdateTimeRef, updateSeq }.
  */
 export function useMap() {
   const { rosRef, connected } = useRosbridgeContext()
-  const offscreenRef = useRef(null)   // OffscreenCanvas or null
-  const mapMetaRef  = useRef(null)   // { origin, resolution, width, height }
-  const subRef      = useRef(null)
+  const offscreenRef       = useRef(null)
+  const mapMetaRef         = useRef(null)
+  const mapStatsRef        = useRef({ exploredCells: 0, totalCells: 0, widthM: 0, heightM: 0 })
+  const lastUpdateTimeRef  = useRef(null)
+  const subRef             = useRef(null)
+  const [updateSeq, setUpdateSeq] = useState(0)
 
   const handleMap = useCallback((msg) => {
     const { info, data } = msg
@@ -28,24 +31,23 @@ export function useMap() {
     const imgData = ctx.createImageData(width, height)
     const pixels = imgData.data
 
+    let exploredCells = 0
     for (let i = 0; i < data.length; i++) {
       const v = data[i]
       let r, g, b
       if (v === -1) {
-        // Unknown — gray
-        r = 128; g = 128; b = 128
+        r = 100; g = 108; b = 120  // unknown — blue-gray
       } else if (v === 0) {
-        // Free — white
-        r = 255; g = 255; b = 255
+        r = 240; g = 244; b = 250  // free — off-white
+        exploredCells++
       } else {
-        // Occupied — scale from gray to black
-        const t = 1 - v / 100
-        r = Math.round(t * 120)
-        g = Math.round(t * 120)
-        b = Math.round(t * 120)
+        // occupied — near-black, stronger at higher probability
+        const t = v / 100
+        r = Math.round((1 - t) * 60)
+        g = Math.round((1 - t) * 60)
+        b = Math.round((1 - t) * 70)
+        exploredCells++
       }
-      // ROS OccupancyGrid: row 0 = world y_min (south). putImageData places row 0 at
-      // canvas top. Flip rows so world south → canvas bottom (north at top, right-side up).
       const row = Math.floor(i / width)
       const col = i % width
       const dst = (height - 1 - row) * width + col
@@ -55,6 +57,15 @@ export function useMap() {
       pixels[dst * 4 + 3] = 255
     }
     ctx.putImageData(imgData, 0, 0)
+
+    mapStatsRef.current = {
+      exploredCells,
+      totalCells: data.length,
+      widthM: width * resolution,
+      heightM: height * resolution,
+    }
+    lastUpdateTimeRef.current = Date.now()
+    setUpdateSeq(s => s + 1)
   }, [])
 
   useEffect(() => {
@@ -75,5 +86,5 @@ export function useMap() {
     }
   }, [connected, handleMap, rosRef])
 
-  return { offscreenRef, mapMetaRef }
+  return { offscreenRef, mapMetaRef, mapStatsRef, lastUpdateTimeRef, updateSeq }
 }
