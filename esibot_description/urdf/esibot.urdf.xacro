@@ -177,7 +177,7 @@
     <child  link="servo_link"/>
     <origin xyz="0 0 0.016" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="${-pi/2}" upper="${pi/2}" effort="0.34" velocity="5.24"/>
+    <limit lower="${-pi}" upper="${pi}" effort="0.34" velocity="5.24"/>
     <dynamics damping="0.001" friction="0.001"/>
   </joint>
 
