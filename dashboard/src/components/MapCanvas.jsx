@@ -9,7 +9,7 @@ import { useToast } from './Toast'
 import { SCAN_OVERLAY } from '../config.js'
 import {
   worldToCanvas, canvasToWorld,
-  drawRobot, drawScan, drawPath, drawGoal,
+  drawRobot, drawScan, drawPath, drawGoal, drawInitialPose,
   drawGrid, drawScaleBar, drawMapInfo
 } from '../utils/mapUtils'
 
@@ -34,10 +34,18 @@ export default function MapCanvas() {
   const centeredRef = useRef(false)
   const touchRef    = useRef({ lastDist: 0, lastPt: null })
 
+  // Nav goal state
   const [goalMode, setGoalMode] = useState(false)
   const [goalPt, setGoalPt] = useState(null)
   const [goalStatus, setGoalStatus] = useState(null)
   const goalModeRef = useRef(false)
+
+  // Init pose state
+  const [initPoseMode, setInitPoseMode] = useState(false)
+  const [initPosePt, setInitPosePt] = useState(null)
+  const initPoseModeRef  = useRef(false)
+  const initPoseDragRef  = useRef(null)   // { startCx, startCy, wx, wy, yaw }
+  const liveInitPoseRef  = useRef(null)   // { cx, cy, yaw } — canvas coords during drag
 
   const [mapSaveStatus, setMapSaveStatus] = useState(null)
 
@@ -55,7 +63,7 @@ export default function MapCanvas() {
     return () => clearInterval(id)
   }, [lastUpdateTimeRef])
 
-  // Toast notification on new map data (debounced 5s, only when area grows)
+  // Toast on new map data
   const lastNotifiedRef = useRef({ explored: 0, time: 0 })
   useEffect(() => {
     if (updateSeq === 0) return
@@ -75,7 +83,9 @@ export default function MapCanvas() {
   }, [updateSeq, mapStatsRef, toast])
 
   useEffect(() => { goalModeRef.current = goalMode }, [goalMode])
+  useEffect(() => { initPoseModeRef.current = initPoseMode }, [initPoseMode])
 
+  // Subscribe to /save_map_status and /nav_goal_status
   useEffect(() => {
     if (!rosRef.current) return
     const saveTopic = new ROSLIB.Topic({
@@ -135,6 +145,7 @@ export default function MapCanvas() {
     }
   }, [mapMetaRef, pose])
 
+  // ── Send nav goal ────────────────────────────────────────────────────────
   const sendGoal = useCallback((wx, wy) => {
     const ros = rosRef.current
     if (!ros) return
@@ -144,7 +155,6 @@ export default function MapCanvas() {
       name: '/nav_goal',
       messageType: 'geometry_msgs/PoseStamped'
     })
-    // Compute heading from robot's current pose toward the goal
     const yaw = Math.atan2(wy - pose.y, wx - pose.x)
     const qz  = Math.sin(yaw / 2)
     const qw  = Math.cos(yaw / 2)
@@ -158,6 +168,40 @@ export default function MapCanvas() {
     setGoalMode(false)
   }, [rosRef, pose])
 
+  // ── Send initial pose to AMCL ────────────────────────────────────────────
+  const sendInitPose = useCallback((wx, wy, yaw) => {
+    const ros = rosRef.current
+    if (!ros) return
+    const qz = Math.sin(yaw / 2)
+    const qw = Math.cos(yaw / 2)
+    const topic = new ROSLIB.Topic({
+      ros,
+      name: '/initialpose',
+      messageType: 'geometry_msgs/PoseWithCovarianceStamped'
+    })
+    topic.publish(new ROSLIB.Message({
+      header: { frame_id: 'map' },
+      pose: {
+        pose: {
+          position:    { x: wx, y: wy, z: 0 },
+          orientation: { x: 0,  y: 0,  z: qz, w: qw }
+        },
+        covariance: [
+          0.25, 0, 0, 0, 0, 0,
+          0, 0.25, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0.07
+        ]
+      }
+    }))
+    setInitPosePt({ wx, wy, yaw })
+    setInitPoseMode(false)
+    toast('Initial pose set — AMCL localizing…', 'success', 3500)
+  }, [rosRef, toast])
+
+  // ── Canvas render loop ───────────────────────────────────────────────────
   useEffect(() => {
     let rafId
     let lastFrame = 0
@@ -172,7 +216,6 @@ export default function MapCanvas() {
       const w = canvas.width
       const h = canvas.height
 
-      // Bilinear smoothing at low zoom (zoomed out), crisp pixels when zoomed in
       ctx.imageSmoothingEnabled = scaleRef.current < 2
       ctx.imageSmoothingQuality = 'high'
       ctx.clearRect(0, 0, w, h)
@@ -200,6 +243,18 @@ export default function MapCanvas() {
         drawGrid(ctx, meta, s, theme)
         drawPath(ctx, pathRef.current, meta, s)
         if (SCAN_OVERLAY) drawScan(ctx, scan, pose, meta, s)
+
+        // Confirmed init pose marker
+        if (initPosePt) {
+          const { cx: icx, cy: icy } = worldToCanvas(initPosePt.wx, initPosePt.wy, meta, s)
+          drawInitialPose(ctx, icx, icy, initPosePt.yaw)
+        }
+        // Live drag preview for init pose
+        if (liveInitPoseRef.current) {
+          const { cx: lcx, cy: lcy, yaw: lyaw } = liveInitPoseRef.current
+          drawInitialPose(ctx, lcx, lcy, lyaw)
+        }
+
         const { cx, cy } = worldToCanvas(pose.x, pose.y, meta, s)
         drawRobot(ctx, cx, cy, pose.yaw, s)
         if (goalPt) {
@@ -236,6 +291,7 @@ export default function MapCanvas() {
         ctx.fillText('Waiting for map data' + dots, w / 2, 24)
       }
 
+      // Mode overlays
       if (goalModeRef.current) {
         ctx.fillStyle = 'rgba(251,191,36,0.06)'
         ctx.fillRect(0, 0, w, h)
@@ -244,11 +300,21 @@ export default function MapCanvas() {
         ctx.textAlign = 'center'
         ctx.fillText('Click on the map to set navigation goal', w / 2, h - 16)
       }
+      if (initPoseModeRef.current) {
+        ctx.fillStyle = 'rgba(34,197,94,0.06)'
+        ctx.fillRect(0, 0, w, h)
+        ctx.fillStyle = '#22c55e'
+        ctx.font = '15px Inter, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('Click and drag on the map to set initial pose & orientation', w / 2, h - 16)
+      }
     }
     rafId = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(rafId)
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [mapMetaRef, offscreenRef, mapStatsRef, pose, scan, autoCenter, goalPt, theme, updateSeq])
+  }, [mapMetaRef, offscreenRef, mapStatsRef, pose, scan, autoCenter, goalPt, initPosePt, theme, updateSeq])
+
+  // ── Mouse handlers ───────────────────────────────────────────────────────
 
   const onWheel = useCallback((e) => {
     const factor = e.deltaY < 0 ? 1.15 : 0.87
@@ -257,11 +323,36 @@ export default function MapCanvas() {
 
   const onMouseDown = (e) => {
     if (goalModeRef.current) return
+    if (initPoseModeRef.current) {
+      const meta = mapMetaRef.current
+      if (!meta || !canvasRef.current) return
+      const rect = canvasRef.current.getBoundingClientRect()
+      const sr   = canvasRef.current.width / rect.width
+      const cx   = (e.clientX - rect.left) * sr
+      const cy   = (e.clientY - rect.top)  * sr
+      const { wx, wy } = canvasToWorld(cx, cy, meta, scaleRef.current, panRef.current)
+      initPoseDragRef.current = { startCx: cx, startCy: cy, wx, wy, yaw: 0 }
+      liveInitPoseRef.current = { cx: cx - panRef.current.x, cy: cy - panRef.current.y, yaw: 0 }
+      return
+    }
     dragging.current = true
     lastPt.current = { x: e.clientX, y: e.clientY }
   }
 
   const onMouseMove = (e) => {
+    if (initPoseDragRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect()
+      const sr   = canvasRef.current.width / rect.width
+      const cx   = (e.clientX - rect.left) * sr
+      const cy   = (e.clientY - rect.top)  * sr
+      const { startCx, startCy, wx, wy } = initPoseDragRef.current
+      const dx = cx - startCx
+      const dy = cy - startCy
+      const yaw = Math.atan2(-dy, dx)
+      initPoseDragRef.current.yaw = yaw
+      liveInitPoseRef.current = { cx: startCx - panRef.current.x, cy: startCy - panRef.current.y, yaw }
+      return
+    }
     if (!dragging.current) return
     panRef.current.x += e.clientX - lastPt.current.x
     panRef.current.y += e.clientY - lastPt.current.y
@@ -269,13 +360,20 @@ export default function MapCanvas() {
   }
 
   const onMouseUp = (e) => {
+    if (initPoseDragRef.current) {
+      const { wx, wy, yaw } = initPoseDragRef.current
+      initPoseDragRef.current = null
+      liveInitPoseRef.current = null
+      sendInitPose(wx, wy, yaw)
+      return
+    }
     if (dragging.current) { dragging.current = false; return }
     const meta = mapMetaRef.current
     if (!meta) return
     const rect = canvasRef.current.getBoundingClientRect()
-    const scaleRatio = canvasRef.current.width / rect.width
-    const cx = (e.clientX - rect.left) * scaleRatio
-    const cy = (e.clientY - rect.top)  * scaleRatio
+    const sr   = canvasRef.current.width / rect.width
+    const cx   = (e.clientX - rect.left) * sr
+    const cy   = (e.clientY - rect.top)  * sr
     const { wx, wy } = canvasToWorld(cx, cy, meta, scaleRef.current, panRef.current)
     if (goalModeRef.current) {
       setGoalPt({ cx: cx - panRef.current.x, cy: cy - panRef.current.y, wx, wy })
@@ -283,7 +381,15 @@ export default function MapCanvas() {
     }
   }
 
-  const onMouseLeave = () => { dragging.current = false }
+  const onMouseLeave = () => {
+    dragging.current = false
+    if (initPoseDragRef.current) {
+      initPoseDragRef.current = null
+      liveInitPoseRef.current = null
+    }
+  }
+
+  // ── Touch handlers ───────────────────────────────────────────────────────
 
   const onTouchStart = (e) => {
     if (e.touches.length === 2) {
@@ -293,6 +399,19 @@ export default function MapCanvas() {
       touchRef.current.lastPt = null
     } else if (e.touches.length === 1) {
       if (goalModeRef.current) return
+      if (initPoseModeRef.current) {
+        const t = e.touches[0]
+        const meta = mapMetaRef.current
+        if (!meta || !canvasRef.current) return
+        const rect = canvasRef.current.getBoundingClientRect()
+        const sr   = canvasRef.current.width / rect.width
+        const cx   = (t.clientX - rect.left) * sr
+        const cy   = (t.clientY - rect.top)  * sr
+        const { wx, wy } = canvasToWorld(cx, cy, meta, scaleRef.current, panRef.current)
+        initPoseDragRef.current = { startCx: cx, startCy: cy, wx, wy, yaw: 0 }
+        liveInitPoseRef.current = { cx: cx - panRef.current.x, cy: cy - panRef.current.y, yaw: 0 }
+        return
+      }
       touchRef.current.lastPt = { x: e.touches[0].clientX, y: e.touches[0].clientY }
       dragging.current = true
     }
@@ -309,15 +428,36 @@ export default function MapCanvas() {
         scaleRef.current = Math.min(20, Math.max(0.2, scaleRef.current * factor))
       }
       touchRef.current.lastDist = dist
-    } else if (e.touches.length === 1 && dragging.current && touchRef.current.lastPt) {
-      const t = e.touches[0]
-      panRef.current.x += t.clientX - touchRef.current.lastPt.x
-      panRef.current.y += t.clientY - touchRef.current.lastPt.y
-      touchRef.current.lastPt = { x: t.clientX, y: t.clientY }
+    } else if (e.touches.length === 1) {
+      if (initPoseDragRef.current) {
+        const t = e.touches[0]
+        const rect = canvasRef.current.getBoundingClientRect()
+        const sr   = canvasRef.current.width / rect.width
+        const cx   = (t.clientX - rect.left) * sr
+        const cy   = (t.clientY - rect.top)  * sr
+        const { startCx, startCy } = initPoseDragRef.current
+        const yaw = Math.atan2(-(cy - startCy), cx - startCx)
+        initPoseDragRef.current.yaw = yaw
+        liveInitPoseRef.current = { cx: startCx - panRef.current.x, cy: startCy - panRef.current.y, yaw }
+        return
+      }
+      if (dragging.current && touchRef.current.lastPt) {
+        const t = e.touches[0]
+        panRef.current.x += t.clientX - touchRef.current.lastPt.x
+        panRef.current.y += t.clientY - touchRef.current.lastPt.y
+        touchRef.current.lastPt = { x: t.clientX, y: t.clientY }
+      }
     }
   }
 
   const onTouchEnd = (e) => {
+    if (initPoseDragRef.current) {
+      const { wx, wy, yaw } = initPoseDragRef.current
+      initPoseDragRef.current = null
+      liveInitPoseRef.current = null
+      sendInitPose(wx, wy, yaw)
+      return
+    }
     if (dragging.current && e.changedTouches.length === 1 && !touchRef.current.lastPt) {
       dragging.current = false
       return
@@ -327,9 +467,9 @@ export default function MapCanvas() {
       const meta = mapMetaRef.current
       if (!meta || !canvasRef.current) return
       const rect = canvasRef.current.getBoundingClientRect()
-      const scaleRatio = canvasRef.current.width / rect.width
-      const cx = (t.clientX - rect.left) * scaleRatio
-      const cy = (t.clientY - rect.top) * scaleRatio
+      const sr   = canvasRef.current.width / rect.width
+      const cx   = (t.clientX - rect.left) * sr
+      const cy   = (t.clientY - rect.top)  * sr
       const { wx, wy } = canvasToWorld(cx, cy, meta, scaleRef.current, panRef.current)
       setGoalPt({ cx: cx - panRef.current.x, cy: cy - panRef.current.y, wx, wy })
       sendGoal(wx, wy)
@@ -338,10 +478,18 @@ export default function MapCanvas() {
     touchRef.current.lastPt = null
     touchRef.current.lastDist = 0
   }
+
   const recenter = () => { centeredRef.current = false; autoCenter() }
+
+  const toggleInitPoseMode = () => {
+    setInitPoseMode(m => !m)
+    setGoalMode(false)
+    setGoalStatus(null)
+  }
 
   const toggleGoalMode = () => {
     setGoalMode(m => !m)
+    setInitPoseMode(false)
     setGoalStatus(null)
   }
 
@@ -356,11 +504,14 @@ export default function MapCanvas() {
     topic.publish(new ROSLIB.Message({}))
   }, [rosRef])
 
-  const mapSaveLabel = mapSaveStatus === 'saving' ? 'Saving...' : mapSaveStatus === 'saved' ? 'Saved' : mapSaveStatus === 'error' ? 'Error' : 'Save Map'
+  // ── Label helpers ────────────────────────────────────────────────────────
+  const mapSaveLabel = mapSaveStatus === 'saving' ? 'Saving…' : mapSaveStatus === 'saved' ? 'Saved' : mapSaveStatus === 'error' ? 'Error' : 'Save Map'
   const mapSaveColor = mapSaveStatus === 'saved' ? '#34d399' : mapSaveStatus === 'error' ? '#f87171' : undefined
   const goalBtnLabel = goalMode ? 'Cancel' : 'Nav Goal'
-  const statusColor = goalStatus === 'sent' ? '#34d399' : goalStatus === 'error' ? '#f87171' : '#fbbf24'
-  const statusLabel = goalStatus === 'sending' ? 'Sending...' : goalStatus === 'navigating' ? 'Navigating...' : goalStatus === 'sent' ? 'Goal Reached' : goalStatus === 'error' ? 'Nav2 Error' : null
+  const initBtnLabel = initPoseMode ? 'Cancel' : 'Set Pose'
+  const statusColor  = goalStatus === 'sent' ? '#34d399' : goalStatus === 'error' ? '#f87171' : '#fbbf24'
+  const statusLabel  = goalStatus === 'sending' ? 'Sending…' : goalStatus === 'navigating' ? 'Navigating…' : goalStatus === 'sent' ? 'Goal Reached' : goalStatus === 'error' ? 'Nav2 Error' : null
+  const activeMode   = initPoseMode ? 'init' : goalMode ? 'goal' : null
 
   return (
     <div className="card map-card">
@@ -380,6 +531,18 @@ export default function MapCanvas() {
           {statusLabel && (
             <span className="goal-status" style={{ color: statusColor }} aria-live="polite">{statusLabel}</span>
           )}
+
+          {/* Set Pose — must be done before Nav Goal */}
+          <button
+            className={`map-btn${initPoseMode ? ' active' : ''}`}
+            onClick={toggleInitPoseMode}
+            disabled={!connected}
+            style={initPoseMode ? { borderColor: '#22c55e', color: '#22c55e' } : undefined}
+            title="Click and drag on the map to set AMCL initial pose"
+          >
+            {initBtnLabel}
+          </button>
+
           <button
             className={`map-btn${goalMode ? ' active' : ''}`}
             onClick={toggleGoalMode}
@@ -404,12 +567,16 @@ export default function MapCanvas() {
           </button>
         </div>
       </div>
-      <div ref={wrapRef} className={`map-wrap${goalMode ? ' goal-active' : ''}`}>
+      <div ref={wrapRef} className={`map-wrap${activeMode ? ` ${activeMode}-active` : ''}`}>
         <canvas
           ref={canvasRef}
-          className={`map-canvas${goalMode ? ' goal-cursor' : ''}`}
+          className={`map-canvas${activeMode === 'goal' ? ' goal-cursor' : activeMode === 'init' ? ' init-cursor' : ''}`}
           role="img"
-          aria-label={goalMode ? 'Robot map — tap to set navigation goal' : 'Robot map showing position and SLAM data'}
+          aria-label={
+            initPoseMode ? 'Robot map — click and drag to set initial pose' :
+            goalMode     ? 'Robot map — tap to set navigation goal' :
+                           'Robot map showing position and SLAM data'
+          }
           tabIndex={0}
           onWheel={onWheel}
           onMouseDown={onMouseDown}

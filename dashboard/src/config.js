@@ -1,4 +1,4 @@
-export const ROSBRIDGE_URL = 'ws://localhost:9090'
+export const ROSBRIDGE_URL = `ws://${window.location.hostname}:9090`
 
 export const ROBOT_NAME = 'EsiBot'
 

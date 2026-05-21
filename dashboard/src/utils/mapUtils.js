@@ -14,22 +14,43 @@ export function canvasToWorld(cx, cy, meta, scale, pan) {
 }
 
 /**
- * Draw initial pose marker (green circle with cross) on canvas.
+ * Draw initial pose marker: green circle + orientation arrow.
+ * @param {number} yaw — heading in radians (ROS convention)
  */
-export function drawInitialPose(ctx, cx, cy) {
+export function drawInitialPose(ctx, cx, cy, yaw = 0) {
+  const r = 12
   ctx.save()
   ctx.translate(cx, cy)
+
+  // Halo
   ctx.beginPath()
-  ctx.arc(0, 0, 8, 0, 2 * Math.PI)
+  ctx.arc(0, 0, r * 1.8, 0, 2 * Math.PI)
+  ctx.fillStyle = 'rgba(34,197,94,0.15)'
+  ctx.fill()
+
+  // Circle
+  ctx.beginPath()
+  ctx.arc(0, 0, r, 0, 2 * Math.PI)
+  ctx.fillStyle = 'rgba(34,197,94,0.35)'
+  ctx.fill()
+  ctx.strokeStyle = '#22c55e'
+  ctx.lineWidth = 2.5
+  ctx.stroke()
+
+  // Orientation arrow (canvas y inverted vs ROS)
+  ctx.rotate(-yaw)
+  const len = r * 2.4
+  ctx.strokeStyle = '#22c55e'
+  ctx.lineWidth = 2.5
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(len, 0); ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(len, 0)
+  ctx.lineTo(len - 7, -4)
+  ctx.lineTo(len - 7,  4)
+  ctx.closePath()
   ctx.fillStyle = '#22c55e'
   ctx.fill()
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 2
-  ctx.stroke()
-  ctx.strokeStyle = '#fff'
-  ctx.lineWidth = 2
-  ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(4, 0); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(0, 4); ctx.stroke()
+
   ctx.restore()
 }
 

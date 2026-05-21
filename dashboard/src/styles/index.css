@@ -643,6 +643,7 @@ html, body, #root {
 
 .map-canvas:active { cursor: grabbing; }
 .map-canvas.goal-cursor { cursor: crosshair; }
+.map-canvas.init-cursor { cursor: cell; }
 
 .map-controls {
   display: flex;
@@ -720,6 +721,11 @@ html, body, #root {
 
 .map-wrap.goal-active {
   outline: 2px solid rgba(251, 191, 36, 0.4);
+  outline-offset: -2px;
+}
+
+.map-wrap.init-active {
+  outline: 2px solid rgba(34, 197, 94, 0.4);
   outline-offset: -2px;
 }
 

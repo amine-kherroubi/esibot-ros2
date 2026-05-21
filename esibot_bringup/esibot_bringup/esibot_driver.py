@@ -53,18 +53,18 @@ MAX_LINEAR_VEL  = 0.3   # m/s
 MAX_ANGULAR_VEL = 2.0   # rad/s
 
 # RPi GPIO pin numbers (BCM numbering) for encoder digital outputs
-GPIO_ENCODER_LEFT  = 17   # D0 of left  encoder → RPi Pin 11
-GPIO_ENCODER_RIGHT = 24   # D0 of right encoder → RPi Pin 18 (moved from GPIO18)
+GPIO_ENCODER_LEFT  = 24   # D0 of left  encoder → RPi Pin 18
+GPIO_ENCODER_RIGHT = 17   # D0 of right encoder → RPi Pin 11
 
 # L298N motor driver — direction control (BCM numbering)
-GPIO_IN1 = 5    # Pin 29 — left  motor forward
-GPIO_IN2 = 6    # Pin 31 — left  motor backward
-GPIO_IN3 = 13   # Pin 33 — right motor forward
-GPIO_IN4 = 26   # Pin 37 — right motor backward (moved from GPIO19)
+GPIO_IN1 = 13   # Pin 33 — left  motor forward
+GPIO_IN2 = 26   # Pin 37 — left  motor backward
+GPIO_IN3 = 5    # Pin 29 — right motor forward
+GPIO_IN4 = 6    # Pin 31 — right motor backward
 
 # L298N speed control via PWM on ENA/ENB
-GPIO_ENA = 18   # Pin 12 — left  motor speed (hardware PWM0)
-GPIO_ENB = 19   # Pin 35 — right motor speed (hardware PWM1)
+GPIO_ENA = 19   # Pin 35 — left  motor speed (hardware PWM1)
+GPIO_ENB = 18   # Pin 12 — right motor speed (hardware PWM0)
 PWM_FREQ     = 1000  # Hz — motor PWM frequency
 MAX_PWM_DUTY =   55  # % — cap duty cycle to limit top speed (tune empirically)
 

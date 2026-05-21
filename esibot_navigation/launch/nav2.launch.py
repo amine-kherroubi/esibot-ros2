@@ -1,7 +1,9 @@
 """
 EsiBot Nav2 launch file: localization (AMCL) + navigation on a pre-built map.
 
-Launches nav2_bringup with slam:=False and use_localization:=True.
+Localization (map_server + AMCL) starts immediately.
+Navigation stack starts after a 15-second delay so that AMCL has time to
+activate and publish the map→odom TF before global_costmap tries to use it.
 
 Usage:
   ros2 launch esibot_navigation nav2.launch.py
@@ -10,16 +12,17 @@ Override map or parameters:
   ros2 launch esibot_navigation nav2.launch.py \
       map:=/absolute/path/to/your_map.yaml \
       params_file:=/absolute/path/to/nav2_params.yaml
-
-Override scan topic (e.g., for simulation):
-  ros2 launch esibot_navigation nav2.launch.py scan_topic:=ultrasound_raw
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    TimerAction,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -35,8 +38,6 @@ def generate_launch_description():
     default_map = os.path.join(slam_pkg_share, "maps", "esibot_map.yaml")
     default_params = os.path.join(pkg_share, "config", "nav2_params.yaml")
     default_rviz = os.path.join(nav2_bringup_dir, "rviz", "nav2_default_view.rviz")
-    # RViz disabled by default to reduce resource usage; enable with use_rviz:=true
-    default_use_rviz = "false"
 
     # Launch arguments
     map_arg = DeclareLaunchArgument(
@@ -52,7 +53,7 @@ def generate_launch_description():
     scan_topic_arg = DeclareLaunchArgument(
         "scan_topic",
         default_value="/scan",
-        description="LaserScan topic to use for localization and costmaps",
+        description="LaserScan topic for localization and costmaps",
     )
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
@@ -76,7 +77,7 @@ def generate_launch_description():
     )
     use_rviz_arg = DeclareLaunchArgument(
         "use_rviz",
-        default_value=default_use_rviz,
+        default_value="false",
         description="Launch RViz2 with Nav2 config",
     )
     rviz_config_arg = DeclareLaunchArgument(
@@ -85,33 +86,49 @@ def generate_launch_description():
         description="Full path to RViz2 config",
     )
 
-    # Apply scan_topic launch argument to all relevant parameters in nav2_params.yaml
-    # RewrittenYaml finds and replaces leaf keys: "scan_topic" (for amcl) and "topic" (for costmap observation sources)
+    # Rewrite scan_topic only in AMCL — do NOT rewrite "topic" globally because
+    # that clobbers cmd_vel_in_topic / cmd_vel_out_topic / state_topic etc.
     configured_params = RewrittenYaml(
         source_file=LaunchConfiguration("params_file"),
         param_rewrites={
-            "scan_topic": LaunchConfiguration("scan_topic"),  # Applies to amcl and behavior server
-            "topic": LaunchConfiguration("scan_topic"),        # Applies to costmap observation sources
+            "scan_topic": LaunchConfiguration("scan_topic"),
         },
         convert_types=True,
     )
 
-    # Launch nav2_bringup in localization mode (AMCL) with navigation stack
-    bringup = IncludeLaunchDescription(
+    common_args = {
+        "use_sim_time": LaunchConfiguration("use_sim_time"),
+        "params_file": configured_params,
+        "autostart": LaunchConfiguration("autostart"),
+        "use_composition": LaunchConfiguration("use_composition"),
+        "use_respawn": LaunchConfiguration("use_respawn"),
+        "log_level": "info",
+    }
+
+    # Step 1 — localization: map_server + AMCL start immediately.
+    # AMCL has set_initial_pose:true so it publishes map→odom TF right after activation.
+    localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(nav2_bringup_dir, "launch", "bringup_launch.py")
+            os.path.join(nav2_bringup_dir, "launch", "localization_launch.py")
         ),
         launch_arguments={
-            "slam": "False",
-            "use_localization": "True",
+            **common_args,
             "map": LaunchConfiguration("map"),
-            "use_sim_time": LaunchConfiguration("use_sim_time"),
-            "params_file": configured_params,
-            "autostart": LaunchConfiguration("autostart"),
-            "use_composition": LaunchConfiguration("use_composition"),
-            "use_respawn": LaunchConfiguration("use_respawn"),
-            "log_level": "info",
         }.items(),
+    )
+
+    # Step 2 — navigation stack: starts 15 s later, after AMCL has activated
+    # and published map→odom, so global_costmap can find the transform.
+    navigation = TimerAction(
+        period=15.0,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(nav2_bringup_dir, "launch", "navigation_launch.py")
+                ),
+                launch_arguments=common_args.items(),
+            )
+        ],
     )
 
     rviz = Node(
@@ -123,7 +140,7 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("use_rviz")),
     )
 
-    actions = [
+    return LaunchDescription([
         map_arg,
         params_arg,
         scan_topic_arg,
@@ -133,8 +150,7 @@ def generate_launch_description():
         use_respawn_arg,
         use_rviz_arg,
         rviz_config_arg,
-        bringup,
+        localization,
+        navigation,
         rviz,
-    ]
-
-    return LaunchDescription(actions)
+    ])
