@@ -144,15 +144,19 @@ export default function MapCanvas() {
       name: '/nav_goal',
       messageType: 'geometry_msgs/PoseStamped'
     })
+    // Compute heading from robot's current pose toward the goal
+    const yaw = Math.atan2(wy - pose.y, wx - pose.x)
+    const qz  = Math.sin(yaw / 2)
+    const qw  = Math.cos(yaw / 2)
     topic.publish(new ROSLIB.Message({
       header: { frame_id: 'map' },
       pose: {
         position:    { x: wx, y: wy, z: 0 },
-        orientation: { x: 0,  y: 0,  z: 0, w: 1 }
+        orientation: { x: 0,  y: 0,  z: qz, w: qw }
       }
     }))
     setGoalMode(false)
-  }, [rosRef])
+  }, [rosRef, pose])
 
   useEffect(() => {
     let rafId

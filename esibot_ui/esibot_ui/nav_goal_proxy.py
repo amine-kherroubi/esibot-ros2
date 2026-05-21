@@ -55,8 +55,8 @@ class NavGoalProxy(Node):
         goal_pose.pose.position.z = 0.0
         goal_pose.pose.orientation.x = 0.0
         goal_pose.pose.orientation.y = 0.0
-        goal_pose.pose.orientation.z = 0.0
-        goal_pose.pose.orientation.w = 1.0
+        goal_pose.pose.orientation.z = pose_msg.pose.orientation.z
+        goal_pose.pose.orientation.w = pose_msg.pose.orientation.w
 
         self.get_logger().info(f'Sending goal frame_id={goal_pose.header.frame_id} to Nav2')
 
