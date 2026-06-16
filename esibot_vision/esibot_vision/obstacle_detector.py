@@ -122,9 +122,9 @@ class ObstacleDetector:
                 if (x2 - x1) < w * _MIN_WIDTH_RATIO:
                     continue
 
+                # Detect obstacles anywhere in the frame, not only between the
+                # two lane tapes. in_lane is kept as an informational flag only.
                 in_lane = not (x2 < lane_x1 or x1 > lane_x2)
-                if not in_lane:
-                    continue
 
                 area = (x2 - x1) * (y2 - y1)
                 ratio = area / total_area
@@ -145,7 +145,7 @@ class ObstacleDetector:
                     "label": label,
                     "conf": round(conf, 2),
                     "bbox": (x1, y1, x2, y2),
-                    "in_lane": True,
+                    "in_lane": in_lane,
                     "proximity": proximity,
                     "color": color,
                 }
@@ -186,7 +186,7 @@ class ObstacleDetector:
                 )
 
         obstacles = list(self._confirmed.values())
-        obstacle_in_lane = len(obstacles) > 0
+        obstacle_in_lane = any(o.get("in_lane") for o in obstacles)
         return obstacles, obstacle_in_lane, annotated
 
     # ─────────────────────────────────────────────────────────────────────

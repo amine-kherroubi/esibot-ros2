@@ -11,4 +11,7 @@ export const BATTERY_CAPACITY_MINUTES = 45
 
 export const SCAN_OVERLAY = true
 
-export const ESP32_STREAM_URL = 'http://10.225.87.99:8888/stream'
+// ESP32-CAM raw MJPEG stream. The dashboard connects directly to the camera
+// at http://<ip>/stream. This is only the default; the live value is editable
+// in the Camera card and persisted in localStorage (see useEsp32Ip).
+export const ESP32_CAM_DEFAULT_IP = '192.168.1.80'

@@ -589,7 +589,49 @@ html, body, #root {
   color: var(--text-muted);
 }
 
+.card-title-actions { display: flex; align-items: center; gap: 8px; }
+
 .topic-switcher { display: flex; gap: 4px; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 36px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+
+.icon-btn svg { width: 16px; height: 16px; }
+
+.icon-btn:hover {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.15);
+  color: var(--text);
+}
+
+.icon-btn.active {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.25);
+  color: var(--accent);
+}
+
+.cam-settings {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0 4px;
+  flex-shrink: 0;
+}
+
+.cam-settings .conn-input { flex: 1; }
+
+.cam-settings-save { flex: 0 0 auto; padding: 9px 18px; }
 
 .topic-btn {
   font-size: 13px;

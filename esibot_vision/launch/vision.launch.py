@@ -13,14 +13,13 @@ def generate_launch_description():
 
     vision_params = os.path.join(pkg, "config", "vision_params.yaml")
 
-    sign_model_default = os.path.join(pkg, "models", "signs_best.pt")
+    # Single-model setup: obstacle detection (yolov8n) only. Sign detection is
+    # disabled by default for performance — pass sign_model_path:=/abs/path to
+    # re-enable it.
+    sign_model_default = ""
     obstacle_model_default = os.path.join(pkg, "models", "yolov8n.pt")
 
-    sign_model_exists = os.path.isfile(sign_model_default)
     obstacle_model_exists = os.path.isfile(obstacle_model_default)
-
-    # If models are missing, default to empty path (detectors disable themselves).
-    sign_model_default = sign_model_default if sign_model_exists else ""
     obstacle_model_default = obstacle_model_default if obstacle_model_exists else ""
 
     sign_model_arg = DeclareLaunchArgument(
@@ -34,16 +33,29 @@ def generate_launch_description():
         description="Absolute path to yolov8n.pt (empty disables obstacle detection).",
     )
 
+    # ESP32-CAM source — vision pulls the MJPEG stream directly (no camera node)
+    esp32_ip_arg = DeclareLaunchArgument(
+        "esp32_ip",
+        default_value="192.168.1.80",
+        description="ESP32-CAM IP address (MJPEG source).",
+    )
+    esp32_port_arg = DeclareLaunchArgument(
+        "esp32_port",
+        default_value="80",
+        description="ESP32-CAM HTTP port.",
+    )
+    stream_path_arg = DeclareLaunchArgument(
+        "stream_path",
+        default_value="/stream",
+        description="ESP32-CAM MJPEG stream path.",
+    )
+    lane_detection_arg = DeclareLaunchArgument(
+        "lane_detection",
+        default_value="true",
+        description="Enable lane detection overlay and topics (true/false).",
+    )
+
     missing_logs = []
-    if not sign_model_exists:
-        missing_logs.append(
-            LogInfo(
-                msg=(
-                    "[vision.launch.py] signs_best.pt not found — sign detection "
-                    "disabled. Provide the model via sign_model_path:=/abs/path."
-                )
-            )
-        )
     if not obstacle_model_exists:
         missing_logs.append(
             LogInfo(
@@ -58,6 +70,10 @@ def generate_launch_description():
         [
             sign_model_arg,
             obstacle_model_arg,
+            esp32_ip_arg,
+            esp32_port_arg,
+            stream_path_arg,
+            lane_detection_arg,
             *missing_logs,
             Node(
                 package="esibot_vision",
@@ -70,10 +86,11 @@ def generate_launch_description():
                         "obstacle_model_path": LaunchConfiguration(
                             "obstacle_model_path"
                         ),
+                        "esp32_ip": LaunchConfiguration("esp32_ip"),
+                        "esp32_port": LaunchConfiguration("esp32_port"),
+                        "stream_path": LaunchConfiguration("stream_path"),
+                        "lane_detection": LaunchConfiguration("lane_detection"),
                     },
-                ],
-                remappings=[
-                    ("/image_raw", "/camera/image_raw"),
                 ],
                 output="screen",
                 emulate_tty=True,

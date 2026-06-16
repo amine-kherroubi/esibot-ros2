@@ -4,6 +4,13 @@ vision_node:
     image_width: 320
     image_height: 240
 
+    # -- ESP32-CAM source (direct MJPEG, no camera node) -------------------
+    esp32_ip: "192.168.1.80"   # overridden via launch arg esp32_ip:=
+    esp32_port: 80
+    stream_path: "/stream"
+    reconnect_delay: 3.0        # seconds between reconnect attempts
+    jpeg_quality: 80            # annotated stream JPEG quality (1-100)
+
     # -- Lane detection (OpenCV) -------------------------------------------
     lane_roi_ratio: 1.0 # full image
     lane_threshold: 60 # binarization threshold (dark pixels < threshold)
@@ -21,4 +28,4 @@ vision_node:
 
     # -- Publishing ---------------------------------------------------------
     publish_annotated: true
-    process_rate: 15.0 # Hz
+    process_rate: 20.0 # Hz — annotated publish/video rate (detection runs in its own thread)
