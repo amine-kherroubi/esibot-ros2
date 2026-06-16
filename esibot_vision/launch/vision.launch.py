@@ -78,6 +78,7 @@ def generate_launch_description():
             esp32_ip_arg,
             esp32_port_arg,
             stream_path_arg,
+            camera_image_topic_arg,
             lane_detection_arg,
             *missing_logs,
             Node(

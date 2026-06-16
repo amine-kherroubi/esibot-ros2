@@ -101,8 +101,6 @@ def generate_launch_description():
     log_level = LaunchConfiguration("log_level")
 
     # convenience conditions
-    is_sim = IfCondition(PythonExpression(["'", runtime, "' == 'sim'"]))
-    is_gazebo = IfCondition(PythonExpression(["'", sim_backend, "' == 'gazebo'"]))
     is_vision = IfCondition(PythonExpression(["'", mode, "' == 'vision'"]))
     is_not_vision = IfCondition(PythonExpression(["'", mode, "' != 'vision'"]))
 
@@ -131,6 +129,9 @@ def generate_launch_description():
             "  bridge       : ",
             bridge,
             "\n",
+            "  log_level    : ",
+            log_level,
+            "\n",
             "=======================================================\n",
         ]
     )
@@ -147,6 +148,8 @@ def generate_launch_description():
                     "sim_mode": PythonExpression(["'", runtime, "' == 'sim'"]),
                     "use_sim_time": PythonExpression([
                         "'",
+                        runtime,
+                        "' == 'sim' and '",
                         sim_backend,
                         "' == 'gazebo'",
                     ]),
@@ -193,7 +196,8 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(vision_pkg, "launch", "vision.launch.py")
-                )
+                ),
+                launch_arguments={"camera_image_topic": "/camera/compressed"}.items(),
             )
         ],
         condition=is_vision,
@@ -241,6 +245,8 @@ def generate_launch_description():
                 launch_arguments={
                     "use_sim_time": PythonExpression([
                         "'",
+                        runtime,
+                        "' == 'sim' and '",
                         sim_backend,
                         "' == 'gazebo'",
                     ])
@@ -258,6 +264,8 @@ def generate_launch_description():
         launch_arguments={
             "use_foxglove": PythonExpression([
                 "'",
+                bridge,
+                "' == 'true' and '",
                 visualization,
                 "' in ['foxglove','both']",
             ])
@@ -281,6 +289,8 @@ def generate_launch_description():
         launch_arguments={
             "use_foxglove": PythonExpression([
                 "'",
+                bridge,
+                "' == 'true' and '",
                 visualization,
                 "' in ['foxglove','both']",
             ]),
@@ -300,6 +310,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(ui_pkg, "launch", "dashboard.launch.py")
         ),
+        launch_arguments={"with_bridge": bridge}.items(),
         condition=IfCondition(dashboard),
     )
 
