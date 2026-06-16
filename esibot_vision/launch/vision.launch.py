@@ -49,6 +49,11 @@ def generate_launch_description():
         default_value="/stream",
         description="ESP32-CAM MJPEG stream path.",
     )
+    camera_image_topic_arg = DeclareLaunchArgument(
+        "camera_image_topic",
+        default_value="",
+        description="If set, vision_node subscribes to this CompressedImage topic instead of the ESP32 HTTP stream.",
+    )
     lane_detection_arg = DeclareLaunchArgument(
         "lane_detection",
         default_value="true",
@@ -89,6 +94,7 @@ def generate_launch_description():
                         "esp32_ip": LaunchConfiguration("esp32_ip"),
                         "esp32_port": LaunchConfiguration("esp32_port"),
                         "stream_path": LaunchConfiguration("stream_path"),
+                        "camera_image_topic": LaunchConfiguration("camera_image_topic"),
                         "lane_detection": LaunchConfiguration("lane_detection"),
                     },
                 ],

@@ -50,6 +50,10 @@ class VisionNode(Node):
         self.declare_parameter("esp32_ip", "192.168.1.80")
         self.declare_parameter("esp32_port", 80)
         self.declare_parameter("stream_path", "/stream")
+        # Optional: subscribe to a ROS image topic (CompressedImage) instead
+        # of pulling the ESP32 MJPEG stream. When set, vision_node will use the
+        # topic and skip the MJPEG capture thread.
+        self.declare_parameter("camera_image_topic", "")
         self.declare_parameter("reconnect_delay", 3.0)
         self.declare_parameter("jpeg_quality", 80)
 
@@ -112,13 +116,25 @@ class VisionNode(Node):
         self._fps = FPSCounter()
 
         # ── Frame source: ESP32-CAM MJPEG (dedicated capture thread) ───────
+        # If a ROS topic is provided, subscribe to it (CompressedImage); else
+        # fallback to pulling the ESP32 MJPEG stream in a capture thread.
         self.stream_url = (
             f"http://{self.esp32_ip}:{self.esp32_port}{self.stream_path}"
         )
-        self._capture_thread = threading.Thread(
-            target=self._capture_loop, daemon=True, name="vision_capture"
-        )
-        self._capture_thread.start()
+        self._using_topic = bool(self.camera_image_topic)
+        if self._using_topic:
+            self.log.info(f"vision_node — subscribing to {self.camera_image_topic}")
+            self._image_sub = self.create_subscription(
+                CompressedImage,
+                self.camera_image_topic,
+                self._on_compressed_image,
+                10,
+            )
+        else:
+            self._capture_thread = threading.Thread(
+                target=self._capture_loop, daemon=True, name="vision_capture"
+            )
+            self._capture_thread.start()
 
         # ── Publishers ───────────────────────────────────────────────────
         self._annotated_pub = self.create_publisher(
@@ -162,6 +178,7 @@ class VisionNode(Node):
         self.esp32_ip = self.get_parameter("esp32_ip").value
         self.esp32_port = int(self.get_parameter("esp32_port").value)
         self.stream_path = self.get_parameter("stream_path").value
+        self.camera_image_topic = self.get_parameter("camera_image_topic").value
         self.reconnect_delay = float(self.get_parameter("reconnect_delay").value)
         self.jpeg_quality = int(self.get_parameter("jpeg_quality").value)
 
@@ -250,6 +267,21 @@ class VisionNode(Node):
             return None
         arr = np.frombuffer(latest, dtype=np.uint8)
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    def _on_compressed_image(self, msg: CompressedImage):
+        """Callback for CompressedImage messages when subscribing to a camera topic."""
+        try:
+            arr = np.frombuffer(msg.data, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if frame is None:
+                return
+            if frame.shape[:2] != (self.img_h, self.img_w):
+                frame = cv2.resize(frame, (self.img_w, self.img_h))
+            with self._frame_lock:
+                self._frame = frame
+                self._last_frame_time = time.time()
+        except Exception as e:
+            self.log.error(f"Failed to decode CompressedImage: {e}", throttle_duration_sec=5.0)
 
     # ── Publish timer (fast) — fresh live frame + last detection overlay ──
     def _process(self):

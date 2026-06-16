@@ -44,6 +44,7 @@ esibot_sensors/
 - Python 3
 
 On Raspberry Pi (real hardware only):
+
 ```bash
 pip install RPi.GPIO
 ```
@@ -66,17 +67,20 @@ source install/setup.bash
 ## Launch
 
 ### Default launch
+
 ```bash
 ros2 launch esibot_sensors radar.launch.py
 ```
 
 ### Override GPIO pins if your wiring differs
+
 ```bash
 ros2 launch esibot_sensors radar.launch.py \
-    servo_pin:=17 trig_pin:=27 echo_pin:=22
+    servo_pin:=12 trig_pin:=23 echo_pin:=25
 ```
 
 ### Change sweep period (seconds)
+
 ```bash
 ros2 launch esibot_sensors radar.launch.py sweep_period:=4.0
 ```
@@ -90,10 +94,10 @@ ros2 launch esibot_sensors radar.launch.py sweep_period:=4.0
 
 | Parameter      | Default | Description                            |
 | -------------- | ------- | -------------------------------------- |
-| `servo_pin`    | 17      | BCM GPIO pin for SG90 signal           |
-| `trig_pin`     | 27      | BCM GPIO pin for HC-SR04 TRIG          |
-| `echo_pin`     | 22      | BCM GPIO pin for HC-SR04 ECHO          |
-| `sweep_period` | 3.0     | Seconds between sweeps                 |
+| `servo_pin`    | 12      | BCM GPIO pin for SG90 signal           |
+| `trig_pin`     | 23      | BCM GPIO pin for HC-SR04 TRIG          |
+| `echo_pin`     | 25      | BCM GPIO pin for HC-SR04 ECHO          |
+| `sweep_period` | 8.0     | Seconds between sweeps                 |
 | `sim_mode`     | false   | Force simulation mode on real hardware |
 
 ---
@@ -102,9 +106,9 @@ ros2 launch esibot_sensors radar.launch.py sweep_period:=4.0
 
 | Component    | Pin                           |
 | ------------ | ----------------------------- |
-| Servo signal | GPIO 17                       |
-| HC-SR04 TRIG | GPIO 27                       |
-| HC-SR04 ECHO | GPIO 22 (via voltage divider) |
+| Servo signal | GPIO 12                       |
+| HC-SR04 TRIG | GPIO 23                       |
+| HC-SR04 ECHO | GPIO 25 (via voltage divider) |
 | VCC          | 5V                            |
 | GND          | GND                           |
 
@@ -164,15 +168,18 @@ ros2 run tf2_tools view_frames
 ```
 
 Expected `/scan` output:
+
 - `frame_id: laser_link`
 - 19 values in `ranges`
 - all out-of-range readings = 5.0 (range_max + 1.0), never 0.0
 
 Expected `/joint_states` output:
+
 - `name: [servo_joint]`
 - `position` stepping from -1.5707 to +1.5707 across 19 messages per sweep
 
 Expected TF tree (from `view_frames`):
+
 ```
 base_footprint -> base_link -> upper_plate -> servo_base -> servo_link -> laser_link
 ```

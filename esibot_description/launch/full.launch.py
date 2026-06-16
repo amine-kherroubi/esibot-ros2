@@ -224,7 +224,23 @@ def generate_launch_description():
 
     # ── Node 5b: slam_toolbox +5s — slam mode only ───────────────────────────
     # /odom (driver, +2s) and /scan (radar, +3s) must be publishing first.
-    slam_launch = TimerAction(
+    # Ensure SLAM is launched in the correct mode depending on sim_mode.
+    slam_launch_sim = TimerAction(
+        period=5.0,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(slam_pkg, "launch", "slam.launch.py")
+                ),
+                launch_arguments={"mode": "sim"}.items(),
+            )
+        ],
+        condition=IfCondition(
+            PythonExpression(["'", mode, "' == 'slam' and '", sim_mode, "' == 'true'"])
+        ),
+    )
+
+    slam_launch_hw = TimerAction(
         period=5.0,
         actions=[
             IncludeLaunchDescription(
@@ -234,7 +250,9 @@ def generate_launch_description():
                 launch_arguments={"mode": "hw"}.items(),
             )
         ],
-        condition=is_slam,
+        condition=IfCondition(
+            PythonExpression(["'", mode, "' == 'slam' and '", sim_mode, "' == 'false'"])
+        ),
     )
 
     # ── Node 6: nav2 +5s — nav mode only ────────────────────────────────────

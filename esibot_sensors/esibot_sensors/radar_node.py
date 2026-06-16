@@ -30,6 +30,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, JointState
+from std_msgs.msg import Float32
 
 try:
     import pigpio
@@ -45,9 +46,7 @@ except ImportError:
     GPIO = None
     GPIO_AVAILABLE = False
 
-SERVO_PIN = 12
-TRIG_PIN  = 23
-ECHO_PIN  = 25
+# GPIO pins are configurable via ROS parameters (see radar.launch.py)
 
 RANGE_MIN = 0.20  # m — filters chassis self-reflection
 RANGE_MAX = 4.00  # m — HC-SR04 datasheet max
@@ -62,12 +61,21 @@ class RadarNode(Node):
         self.declare_parameter("settle_ms",      20)    # extra wait after servo ramp before ping
         self.declare_parameter("median_reads",    1)    # pings averaged per beam
         self.declare_parameter("sim_mode",       False)
+        # GPIO pin parameters (BCM numbering)
+        self.declare_parameter("servo_pin", 12)
+        self.declare_parameter("trig_pin", 23)
+        self.declare_parameter("echo_pin", 25)
 
         self._steps   = self.get_parameter("sweep_steps").value
         self._coeff   = float(self.get_parameter("servo_coeff").value)
         self._settle  = self.get_parameter("settle_ms").value / 1000.0
         self._median  = self.get_parameter("median_reads").value
         self._sim     = self.get_parameter("sim_mode").value
+
+        # GPIO pins (BCM)
+        self._servo_pin = int(self.get_parameter("servo_pin").value)
+        self._trig_pin = int(self.get_parameter("trig_pin").value)
+        self._echo_pin = int(self.get_parameter("echo_pin").value)
 
         # Servo command range: -π … +π (clamped to 500-2500µs → full physical sweep)
         self._angle_min = -math.pi
@@ -81,6 +89,7 @@ class RadarNode(Node):
 
         self._scan_pub = self.create_publisher(LaserScan, "/scan", 10)
         self._js_pub   = self.create_publisher(JointState, "/joint_states", 10)
+        self._servo_pub = self.create_publisher(Float32, "/esibot/servo_angle", 10)
 
         # pigpio state
         self._pi              = None
@@ -89,6 +98,9 @@ class RadarNode(Node):
         self._echo_ready      = threading.Event()
         self._echo_dist       = float("inf")
         self._pulse_us        = 1500
+
+        # current servo angle in degrees (servo convention)
+        self._current_servo_deg = 0.0
 
         # RPi.GPIO fallback state
         self._servo_pwm = None
@@ -122,16 +134,16 @@ class RadarNode(Node):
                     self._pi = None
                     self.get_logger().error("pigpiod not running — start with: sudo pigpiod")
                 else:
-                    self._pi.set_mode(TRIG_PIN, pigpio.OUTPUT)
-                    self._pi.write(TRIG_PIN, 0)
-                    self._pi.set_mode(ECHO_PIN, pigpio.INPUT)
-                    self._pi.set_pull_up_down(ECHO_PIN, pigpio.PUD_DOWN)
+                    self._pi.set_mode(self._trig_pin, pigpio.OUTPUT)
+                    self._pi.write(self._trig_pin, 0)
+                    self._pi.set_mode(self._echo_pin, pigpio.INPUT)
+                    self._pi.set_pull_up_down(self._echo_pin, pigpio.PUD_DOWN)
                     self._echo_cb_handle = self._pi.callback(
-                        ECHO_PIN, pigpio.EITHER_EDGE, self._echo_handler
+                        self._echo_pin, pigpio.EITHER_EDGE, self._echo_handler
                     )
-                    self._pi.set_servo_pulsewidth(SERVO_PIN, 1500)
+                    self._pi.set_servo_pulsewidth(self._servo_pin, 1500)
                     self.get_logger().info(
-                        f"pigpio OK — SERVO=GPIO{SERVO_PIN} TRIG=GPIO{TRIG_PIN} ECHO=GPIO{ECHO_PIN}"
+                        f"pigpio OK — SERVO=GPIO{self._servo_pin} TRIG=GPIO{self._trig_pin} ECHO=GPIO{self._echo_pin}"
                     )
                     return
             except Exception as exc:
@@ -141,11 +153,11 @@ class RadarNode(Node):
         if GPIO_AVAILABLE:
             try:
                 GPIO.setmode(GPIO.BCM)
-                GPIO.setup(TRIG_PIN,  GPIO.OUT)
-                GPIO.setup(ECHO_PIN,  GPIO.IN)
-                GPIO.output(TRIG_PIN, False)
-                GPIO.setup(SERVO_PIN, GPIO.OUT)
-                self._servo_pwm = GPIO.PWM(SERVO_PIN, 50)
+                GPIO.setup(self._trig_pin,  GPIO.OUT)
+                GPIO.setup(self._echo_pin,  GPIO.IN)
+                GPIO.output(self._trig_pin, False)
+                GPIO.setup(self._servo_pin, GPIO.OUT)
+                self._servo_pwm = GPIO.PWM(self._servo_pin, 50)
                 self._servo_pwm.start(7.5)
                 self.get_logger().warning("RPi.GPIO fallback — ~500 µs jitter on echo timing")
                 return
@@ -174,10 +186,13 @@ class RadarNode(Node):
         Smooth 5-step ramp over 50 ms to reduce jitter and load on the servo.
         """
         target_us = int(max(500.0, min(2500.0, 1500.0 + servo_deg * self._coeff)))
+        # record commanded position (degrees)
+        self._current_servo_deg = servo_deg
+
         if self._pi is not None:
             for i in range(1, 6):
                 us = int(self._pulse_us + (target_us - self._pulse_us) * i / 5)
-                self._pi.set_servo_pulsewidth(SERVO_PIN, us)
+                self._pi.set_servo_pulsewidth(self._servo_pin, us)
                 time.sleep(0.010)
             self._pulse_us = target_us
         elif self._servo_pwm is not None:
@@ -198,28 +213,28 @@ class RadarNode(Node):
         self._echo_ready.clear()
         self._echo_start_tick = None
         self._echo_dist = float("inf")
-        self._pi.write(TRIG_PIN, 0)
+        self._pi.write(self._trig_pin, 0)
         time.sleep(0.015)
-        self._pi.write(TRIG_PIN, 1)
+        self._pi.write(self._trig_pin, 1)
         time.sleep(0.000010)
-        self._pi.write(TRIG_PIN, 0)
+        self._pi.write(self._trig_pin, 0)
         if self._echo_ready.wait(timeout=0.20):
             return self._echo_dist
         self.get_logger().warning("HC-SR04 echo timeout (sensor disconnected?)")
         return float("inf")
 
     def _ping_gpio(self) -> float:
-        GPIO.output(TRIG_PIN, False)
+        GPIO.output(self._trig_pin, False)
         time.sleep(0.015)
-        GPIO.output(TRIG_PIN, True)
+        GPIO.output(self._trig_pin, True)
         time.sleep(0.000010)
-        GPIO.output(TRIG_PIN, False)
+        GPIO.output(self._trig_pin, False)
         t0 = time.time()
-        while GPIO.input(ECHO_PIN) == 0:
+        while GPIO.input(self._echo_pin) == 0:
             if time.time() - t0 > 0.10:
                 return float("inf")
         start = time.time()
-        while GPIO.input(ECHO_PIN) == 1:
+        while GPIO.input(self._echo_pin) == 1:
             if time.time() - start > 0.20:
                 return float("inf")
         return (time.time() - start) * 343.0 / 2.0
@@ -306,8 +321,18 @@ class RadarNode(Node):
         js = JointState()
         js.header.stamp = self.get_clock().now().to_msg()
         js.name     = ["servo_joint"]
-        js.position = [0.0]
+        # publish actual servo position (convert degrees → radians)
+        js.position = [math.radians(self._current_servo_deg)]
         self._js_pub.publish(js)
+
+        # lightweight servo angle topic for dashboard (radians)
+        try:
+            angle_msg = Float32()
+            angle_msg.data = math.radians(self._current_servo_deg)
+            self._servo_pub.publish(angle_msg)
+        except Exception:
+            # best-effort: do not fatal on pub errors
+            pass
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
 
@@ -320,7 +345,7 @@ class RadarNode(Node):
                 pass
         if self._pi:
             try:
-                self._pi.set_servo_pulsewidth(SERVO_PIN, 0)
+                self._pi.set_servo_pulsewidth(self._servo_pin, 0)
                 self._pi.stop()
             except Exception:
                 pass

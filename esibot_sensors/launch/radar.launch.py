@@ -16,7 +16,7 @@ def generate_launch_description():
 
     servo_pin_arg = DeclareLaunchArgument(
         "servo_pin",
-        default_value="17",
+        default_value="12",
         description="BCM GPIO pin number for the SG90 servo signal wire",
     )
 
