@@ -281,7 +281,8 @@ def generate_launch_description():
             radar_launch,  # +3s      — slam / nav only
             camera_launch,  # +3s      — vision only
             vision_launch,  # +4s      — vision only
-            slam_launch,  # +5s      — slam only
+            slam_launch_sim,  # +5s      — slam only in simulation
+            slam_launch_hw,  # +5s      — slam only on hardware
             nav_launch,  # +5s      — nav only
         ]
     )
