@@ -237,9 +237,11 @@ def generate_launch_description():
         condition=is_slam,
     )
 
-    # ── Node 6: nav2 +5s — nav mode only ────────────────────────────────────
+    # ── Node 6: nav2 +15s — nav mode only ───────────────────────────────────
+    # Pi 4 needs driver (+2s) and radar (+3s) fully running before nav2 starts.
+    # odom→base_footprint TF must exist before lifecycle_manager activates costmaps.
     nav_launch = TimerAction(
-        period=5.0,
+        period=15.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(

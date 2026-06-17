@@ -49,7 +49,7 @@ SERVO_PIN = 12
 TRIG_PIN  = 23
 ECHO_PIN  = 25
 
-RANGE_MIN = 0.20  # m — filters chassis self-reflection
+RANGE_MIN = 0.10  # m — HC-SR04 min reliable range
 RANGE_MAX = 4.00  # m — HC-SR04 datasheet max
 
 
