@@ -25,12 +25,12 @@
   <xacro:include filename="$(find esibot_description)/urdf/materials.xacro"/>
 
   <!-- ── Properties — update with real chassis measurements ────────────────── -->
-  <xacro:property name="base_width"       value="0.160"/>
+  <xacro:property name="base_width"       value="0.138"/>
   <xacro:property name="base_length"      value="0.140"/>
   <xacro:property name="base_height"      value="0.012"/>
   <xacro:property name="wheel_radius"     value="0.033"/>
   <xacro:property name="wheel_width"      value="0.018"/>
-  <xacro:property name="wheel_separation" value="0.160"/>
+  <xacro:property name="wheel_separation" value="0.138"/>
   <xacro:property name="caster_radius"    value="0.010"/>
   <xacro:property name="spacer_height"    value="0.080"/>
   <xacro:property name="sensor_arm_x"    value="0.020"/>

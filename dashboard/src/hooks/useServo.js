@@ -16,7 +16,7 @@ export function useServo() {
 
     subRef.current = new ROSLIB.Topic({
       ros: rosRef.current,
-      name: '/esibot/servo_angle',
+      name: '/servo_angle',
       messageType: 'std_msgs/Float32',
       throttle_rate: 200,
       queue_length: 1
