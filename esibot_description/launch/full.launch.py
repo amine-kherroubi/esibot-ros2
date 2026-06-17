@@ -47,6 +47,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     LogInfo,
     TimerAction,
@@ -111,6 +112,13 @@ def generate_launch_description():
     is_nav = IfCondition(PythonExpression(["'", mode, "' == 'nav'"]))
     is_vision = IfCondition(PythonExpression(["'", mode, "' == 'vision'"]))
     is_slam_or_nav = IfCondition(PythonExpression(["'", mode, "' in ['slam', 'nav']"]))
+
+    # ── pigpiod — required for HC-SR04 µs-precision timing ──────────────────
+    ensure_pigpiod = ExecuteProcess(
+        cmd=["bash", "-c", "pgrep pigpiod || sudo pigpiod"],
+        output="screen",
+        condition=IfCondition(PythonExpression(["'", sim_mode, "' == 'false'"])),
+    )
 
     # ── Robot description ─────────────────────────────────────────────────────
     robot_description = ParameterValue(
@@ -259,6 +267,7 @@ def generate_launch_description():
             mode_arg,
             use_foxglove_arg,
             log_start,
+            ensure_pigpiod,   # immediate — hw mode only
             robot_state_pub,  # immediate — all modes
             foxglove_bridge,  # immediate — all modes
             driver_launch,  # +2s      — all modes

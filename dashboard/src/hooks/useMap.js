@@ -74,16 +74,34 @@ export function useMap() {
   useEffect(() => {
     if (!connected || !rosRef.current) return
 
-    subRef.current = new ROSLIB.Topic({
-      ros: rosRef.current,
-      name: '/map',
-      messageType: 'nav_msgs/OccupancyGrid',
-      throttle_rate: 2000,
-      queue_length: 1
-    })
-    subRef.current.subscribe(handleMap)
+    let retryTimer = null
+    let gotMap = false
+
+    const subscribe = () => {
+      subRef.current?.unsubscribe()
+      subRef.current = new ROSLIB.Topic({
+        ros: rosRef.current,
+        name: '/map',
+        messageType: 'nav_msgs/OccupancyGrid',
+        throttle_rate: 2000,
+        queue_length: 1
+      })
+      subRef.current.subscribe((msg) => {
+        gotMap = true
+        handleMap(msg)
+      })
+    }
+
+    subscribe()
+
+    retryTimer = setInterval(() => {
+      if (!gotMap && connected) {
+        subscribe()
+      }
+    }, 8000)
 
     return () => {
+      if (retryTimer) clearInterval(retryTimer)
       subRef.current?.unsubscribe()
       subRef.current = null
     }

@@ -106,10 +106,11 @@ def generate_launch_description():
     }
 
     # Step 1 — localization: map_server + AMCL start immediately.
-    # AMCL has set_initial_pose:true so it publishes map→odom TF right after activation.
+    # Uses our own localization_launch.py (not nav2_bringup's) so that
+    # lifecycle_manager_localization reads bond_timeout from nav2_params.yaml.
     localization = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(nav2_bringup_dir, "launch", "localization_launch.py")
+            os.path.join(pkg_share, "launch", "localization_launch.py")
         ),
         launch_arguments={
             **common_args,
@@ -119,12 +120,13 @@ def generate_launch_description():
 
     # Step 2 — navigation stack: starts 15 s later, after AMCL has activated
     # and published map→odom, so global_costmap can find the transform.
+    # Uses our own navigation_launch.py for the same bond_timeout fix.
     navigation = TimerAction(
         period=15.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
-                    os.path.join(nav2_bringup_dir, "launch", "navigation_launch.py")
+                    os.path.join(pkg_share, "launch", "navigation_launch.py")
                 ),
                 launch_arguments=common_args.items(),
             )

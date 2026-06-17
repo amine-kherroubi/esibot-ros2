@@ -1,6 +1,7 @@
 import React from 'react'
 import { useRosbridgeContext } from '../context/RosbridgeContext'
 import { useTheme } from '../context/ThemeContext'
+import { useSystemStatus } from '../hooks/useSystemStatus'
 import { ROBOT_NAME } from '../config.js'
 
 const SunIcon = () => (
@@ -14,6 +15,34 @@ const MoonIcon = () => (
     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
   </svg>
 )
+
+const LABELS = { driver: 'DRV', radar: 'RAD', map: 'MAP', nav2: 'NAV' }
+const TITLES = {
+  driver: 'Driver (odom)',
+  radar: 'Radar (scan)',
+  map: 'Map server',
+  nav2: 'Navigation stack',
+}
+
+function SystemStatusBadge() {
+  const sys = useSystemStatus()
+  const keys = ['driver', 'radar', 'map', 'nav2']
+
+  const summaryClass = sys.summary === 'ready' ? 'sys-ready'
+    : sys.summary === 'starting' ? 'sys-starting'
+    : 'sys-offline'
+
+  return (
+    <div className={`sys-status ${summaryClass}`} role="status" aria-label="System status">
+      {keys.map(k => (
+        <span key={k} className="sys-node" title={`${TITLES[k]}: ${sys[k]}`}>
+          <span className={`sys-dot sys-${sys[k]}`} aria-hidden="true" />
+          <span className="sys-label">{LABELS[k]}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
 
 export default function Header() {
   const { connected, connecting, latency } = useRosbridgeContext()
@@ -35,6 +64,7 @@ export default function Header() {
       </div>
 
       <nav className="header-right" aria-label="Robot status and controls">
+        <SystemStatusBadge />
         {connected && latency !== null && (
           <span className="latency-badge" aria-label={`Latency ${latency} milliseconds`}>{latency} ms</span>
         )}
