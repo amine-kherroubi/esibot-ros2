@@ -32,10 +32,9 @@ from nav2_common.launch import RewrittenYaml
 
 def generate_launch_description():
     pkg_share = get_package_share_directory("esibot_navigation")
-    slam_pkg_share = get_package_share_directory("esibot_slam")
     nav2_bringup_dir = get_package_share_directory("nav2_bringup")
 
-    default_map = os.path.join(slam_pkg_share, "maps", "esibot_map.yaml")
+    default_map = os.path.join(os.path.expanduser("~"), "robot_ws", "src", "maps", "esibot_map.yaml")
     default_params = os.path.join(pkg_share, "config", "nav2_params.yaml")
     default_rviz = os.path.join(nav2_bringup_dir, "rviz", "nav2_default_view.rviz")
 

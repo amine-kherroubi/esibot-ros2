@@ -4,7 +4,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from geometry_msgs.msg import PoseStamped
-from std_msgs.msg import String
+from std_msgs.msg import String, Empty
 from nav2_msgs.action import NavigateToPose
 
 
@@ -23,13 +23,24 @@ class NavGoalProxy(Node):
         self._goal_sub = self.create_subscription(
             PoseStamped, '/nav_goal', self._on_goal, qos)
         self._current_handle = None
-        self.get_logger().info('NavGoalProxy ready — listening on /nav_goal')
+        self._cancel_sub = self.create_subscription(
+            Empty, '/cancel_nav_goal', self._on_cancel, 10)
+        self.get_logger().info('NavGoalProxy ready — listening on /nav_goal, /cancel_nav_goal')
 
     def _publish_status(self, status):
         msg = String()
         msg.data = status
         self._status_pub.publish(msg)
         self.get_logger().info(f'Nav goal status: {status}')
+
+    def _on_cancel(self, msg):
+        if self._current_handle is not None:
+            self.get_logger().info('Cancelling current goal')
+            self._current_handle.cancel_goal_async()
+            self._current_handle = None
+            self._publish_status('cancelled')
+        else:
+            self.get_logger().info('No active goal to cancel')
 
     def _on_goal(self, pose_msg: PoseStamped):
         self.get_logger().info(f'Received goal frame_id={pose_msg.header.frame_id} pos=({pose_msg.pose.position.x:.2f},{pose_msg.pose.position.y:.2f})')

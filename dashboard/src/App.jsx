@@ -9,7 +9,6 @@ import MapCanvas       from './components/MapCanvas'
 import VideoFeed       from './components/VideoFeed'
 import Teleop          from './components/Teleop'
 import ServoGauge      from './components/ServoGauge'
-import BatteryPanel    from './components/BatteryPanel'
 import ConnectionPanel from './components/ConnectionPanel'
 
 function ConnectionToaster() {
@@ -43,7 +42,6 @@ function Dashboard() {
         </div>
         <div className="col-right">
           <ConnectionPanel />
-          <BatteryPanel />
           <ServoGauge />
         </div>
       </main>

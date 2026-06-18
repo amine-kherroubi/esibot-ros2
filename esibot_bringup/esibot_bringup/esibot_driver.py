@@ -14,6 +14,8 @@ Wiring (EsiBot Wiring v3):
 UART protocol:
   ESP32 → RPi :  "BAT:<voltage>\n"   (read-only, Pi sends nothing)
 
+GPIO backend: pigpio (shares pigpiod daemon with radar_node)
+
 Topics:
   Publishes  -> /odom            (nav_msgs/Odometry)
   Publishes  -> /tf              (geometry_msgs/TransformStamped)
@@ -29,17 +31,13 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, TransformStamped, Quaternion
 from sensor_msgs.msg import BatteryState
 from tf2_ros import TransformBroadcaster
+import pigpio
 
 # ─────────────────────────────────────────────────────────
 #  ROBOT PHYSICAL PARAMETERS  — calibrate empirically
 # ─────────────────────────────────────────────────────────
 
-# TODO(calibrate): Measure the distance between the two wheel contact centres
-# with a ruler on the assembled robot and set this value.
 WHEEL_BASE   = 0.16    # metres  — distance between wheel centres
-
-# TODO(calibrate): Measure the actual outer diameter of the wheel (including
-# tyre if present) and divide by 2.
 WHEEL_RADIUS = 0.033   # metres  — wheel radius
 
 # 20-hole encoder disc, counting both edges (RISING + FALLING) → 40 ticks/rev.
@@ -101,9 +99,9 @@ class EsibotDriver(Node):
         self.y     = 0.0
         self.theta = 0.0
 
-        # ── Encoder tick counters (written by GPIO interrupt, read by timer) ──
+        # ── Encoder tick counters (written by GPIO callback, read by timer) ───
         self._lock         = threading.Lock()
-        self._ticks_left   = 0   # cumulative, incremented by interrupt
+        self._ticks_left   = 0   # cumulative, incremented by callback
         self._ticks_right  = 0
         self._prev_left    = 0   # snapshot from previous update cycle
         self._prev_right   = 0
@@ -112,9 +110,10 @@ class EsibotDriver(Node):
         self._vel_linear  = 0.0
         self._vel_angular = 0.0
 
-        # ── Motor PWM handles (set in _setup_motor_gpio) ──────────────────────
-        self._pwm_ena = None
-        self._pwm_enb = None
+        # ── pigpio connection + encoder callback handles ─────────────────────
+        self._pi = None
+        self._cb_left = None
+        self._cb_right = None
 
         # ── Motor direction (+1 forward, -1 backward, 0 stopped) ─────────────
         # Used to sign encoder tick deltas — IR encoders count both directions
@@ -162,24 +161,59 @@ class EsibotDriver(Node):
         )
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  GPIO SETUP
+    #  GPIO SETUP (pigpio — shares pigpiod with radar_node)
     # ══════════════════════════════════════════════════════════════════════════
 
-    def _setup_motor_gpio(self):
-        """Configure L298N IN1-IN4 (direction) and ENA/ENB (PWM speed)."""
+    def _setup_gpio(self):
+        """Connect to pigpiod and register encoder callbacks."""
         try:
-            import RPi.GPIO as GPIO
+            self._pi = pigpio.pi()
+            if not self._pi.connected:
+                raise RuntimeError('pigpiod not running')
+
+            self._pi.set_mode(GPIO_ENCODER_LEFT, pigpio.INPUT)
+            self._pi.set_mode(GPIO_ENCODER_RIGHT, pigpio.INPUT)
+            self._pi.set_pull_up_down(GPIO_ENCODER_LEFT, pigpio.PUD_UP)
+            self._pi.set_pull_up_down(GPIO_ENCODER_RIGHT, pigpio.PUD_UP)
+
+            self._cb_left = self._pi.callback(
+                GPIO_ENCODER_LEFT, pigpio.EITHER_EDGE, self._left_encoder_cb
+            )
+            self._cb_right = self._pi.callback(
+                GPIO_ENCODER_RIGHT, pigpio.EITHER_EDGE, self._right_encoder_cb
+            )
+
+            self._gpio_available = True
+            self.get_logger().info(
+                f'Encoder callbacks registered (pigpio) on GPIO{GPIO_ENCODER_LEFT} (left) '
+                f'and GPIO{GPIO_ENCODER_RIGHT} (right)'
+            )
+        except Exception as e:
+            self._gpio_available = False
+            self.get_logger().warn(
+                f'pigpio not available ({e}). '
+                'Falling back to open-loop odometry from cmd_vel.'
+            )
+
+    def _setup_motor_gpio(self):
+        """Configure L298N IN1-IN4 (direction) and ENA/ENB (PWM speed) via pigpio."""
+        try:
+            pi = self._pi
+            if pi is None or not pi.connected:
+                raise RuntimeError('pigpio not connected')
+
             for pin in (GPIO_IN1, GPIO_IN2, GPIO_IN3, GPIO_IN4):
-                GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
-            GPIO.setup(GPIO_ENA, GPIO.OUT)
-            GPIO.setup(GPIO_ENB, GPIO.OUT)
-            self._pwm_ena = GPIO.PWM(GPIO_ENA, PWM_FREQ)
-            self._pwm_enb = GPIO.PWM(GPIO_ENB, PWM_FREQ)
-            self._pwm_ena.start(0)
-            self._pwm_enb.start(0)
+                pi.set_mode(pin, pigpio.OUTPUT)
+                pi.write(pin, 0)
+
+            pi.set_PWM_frequency(GPIO_ENA, PWM_FREQ)
+            pi.set_PWM_frequency(GPIO_ENB, PWM_FREQ)
+            pi.set_PWM_dutycycle(GPIO_ENA, 0)
+            pi.set_PWM_dutycycle(GPIO_ENB, 0)
+
             self._motor_gpio_available = True
             self.get_logger().info(
-                f'Motor GPIO configured: IN1=GPIO{GPIO_IN1}, IN2=GPIO{GPIO_IN2}, '
+                f'Motor GPIO configured (pigpio): IN1=GPIO{GPIO_IN1}, IN2=GPIO{GPIO_IN2}, '
                 f'IN3=GPIO{GPIO_IN3}, IN4=GPIO{GPIO_IN4}, '
                 f'ENA=GPIO{GPIO_ENA} (PWM {PWM_FREQ}Hz), ENB=GPIO{GPIO_ENB} (PWM {PWM_FREQ}Hz)'
             )
@@ -188,91 +222,56 @@ class EsibotDriver(Node):
             self.get_logger().warn(f'Motor GPIO setup failed ({e}) — motors disabled.')
 
     def _set_motor(self, v_left: float, v_right: float):
-        """PWM motor control: direction via IN1-IN4, speed via ENA/ENB duty cycle."""
+        """PWM motor control via pigpio: direction via IN1-IN4, speed via ENA/ENB."""
         if not self._motor_gpio_available:
             return
-        import RPi.GPIO as GPIO
+        pi = self._pi
 
-        duty_left  = min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY)
-        duty_right = min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY)
+        # Convert % duty (0-100) to pigpio range (0-255)
+        duty_left  = int(min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY) * 255 / 100)
+        duty_right = int(min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY) * 255 / 100)
 
         # Left motor direction + sign tracking for encoder integration
         if v_left > MOTOR_DEADBAND:
-            GPIO.output(GPIO_IN1, GPIO.HIGH)
-            GPIO.output(GPIO_IN2, GPIO.LOW)
+            pi.write(GPIO_IN1, 1)
+            pi.write(GPIO_IN2, 0)
             self._dir_left = +1
         elif v_left < -MOTOR_DEADBAND:
-            GPIO.output(GPIO_IN1, GPIO.LOW)
-            GPIO.output(GPIO_IN2, GPIO.HIGH)
+            pi.write(GPIO_IN1, 0)
+            pi.write(GPIO_IN2, 1)
             self._dir_left = -1
         else:
-            GPIO.output(GPIO_IN1, GPIO.LOW)
-            GPIO.output(GPIO_IN2, GPIO.LOW)
-            duty_left = 0.0
+            pi.write(GPIO_IN1, 0)
+            pi.write(GPIO_IN2, 0)
+            duty_left = 0
             self._dir_left = 0
 
         # Right motor direction + sign tracking for encoder integration
         if v_right > MOTOR_DEADBAND:
-            GPIO.output(GPIO_IN3, GPIO.HIGH)
-            GPIO.output(GPIO_IN4, GPIO.LOW)
+            pi.write(GPIO_IN3, 1)
+            pi.write(GPIO_IN4, 0)
             self._dir_right = +1
         elif v_right < -MOTOR_DEADBAND:
-            GPIO.output(GPIO_IN3, GPIO.LOW)
-            GPIO.output(GPIO_IN4, GPIO.HIGH)
+            pi.write(GPIO_IN3, 0)
+            pi.write(GPIO_IN4, 1)
             self._dir_right = -1
         else:
-            GPIO.output(GPIO_IN3, GPIO.LOW)
-            GPIO.output(GPIO_IN4, GPIO.LOW)
-            duty_right = 0.0
+            pi.write(GPIO_IN3, 0)
+            pi.write(GPIO_IN4, 0)
+            duty_right = 0
             self._dir_right = 0
 
-        # Speed via PWM duty cycle
-        self._pwm_ena.ChangeDutyCycle(duty_left)
-        self._pwm_enb.ChangeDutyCycle(duty_right)
+        # Speed via PWM duty cycle (pigpio range 0-255)
+        pi.set_PWM_dutycycle(GPIO_ENA, duty_left)
+        pi.set_PWM_dutycycle(GPIO_ENB, duty_right)
 
-    def _setup_gpio(self):
-        """
-        Configure RPi GPIO interrupts for both wheel encoders.
-        Encoders are powered at 3.3V so their D0 output is RPi-safe.
-        Rising-edge detection counts one tick per hole in the disc.
-        """
-        try:
-            import RPi.GPIO as GPIO
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(GPIO_ENCODER_LEFT,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
-            GPIO.setup(GPIO_ENCODER_RIGHT, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    # ── Encoder callbacks (run in pigpio thread) ──────────────────────────
 
-            GPIO.add_event_detect(
-                GPIO_ENCODER_LEFT,
-                GPIO.BOTH,
-                callback=self._left_encoder_cb,
-            )
-            GPIO.add_event_detect(
-                GPIO_ENCODER_RIGHT,
-                GPIO.BOTH,
-                callback=self._right_encoder_cb,
-            )
-
-            self._gpio_available = True
-            self._GPIO = GPIO
-            self.get_logger().info(
-                f'Encoder interrupts registered on GPIO{GPIO_ENCODER_LEFT} (left) '
-                f'and GPIO{GPIO_ENCODER_RIGHT} (right)'
-            )
-        except Exception as e:
-            self._gpio_available = False
-            self.get_logger().warn(
-                f'RPi.GPIO not available ({e}). '
-                'Falling back to open-loop odometry from cmd_vel.'
-            )
-
-    # ── Interrupt callbacks (run in GPIO thread) ───────────────────────────
-
-    def _left_encoder_cb(self, channel):
+    def _left_encoder_cb(self, gpio, level, tick):
         with self._lock:
             self._ticks_left += 1
 
-    def _right_encoder_cb(self, channel):
+    def _right_encoder_cb(self, gpio, level, tick):
         with self._lock:
             self._ticks_right += 1
 
@@ -454,8 +453,6 @@ class EsibotDriver(Node):
         msg.twist.twist.linear.x  = self._vel_linear
         msg.twist.twist.angular.z = self._vel_angular
 
-        # Covariance — encoder-based is more reliable than open-loop,
-        # but still a basic differential drive without IMU correction.
         msg.pose.covariance[0]  = 0.05   # x
         msg.pose.covariance[7]  = 0.05   # y
         msg.pose.covariance[35] = 0.02   # yaw
@@ -485,23 +482,24 @@ class EsibotDriver(Node):
 
     def destroy_node(self):
         self._send_stop()
-        if self._pwm_ena is not None:
-            try:
-                self._pwm_ena.stop()
-                self._pwm_enb.stop()
-            except Exception:
-                pass
+        if self._cb_left is not None:
+            self._cb_left.cancel()
+        if self._cb_right is not None:
+            self._cb_right.cancel()
         if self.serial_conn is not None:
             try:
                 self.serial_conn.close()
             except Exception:
                 pass
-        if self._gpio_available or self._motor_gpio_available:
+        if self._pi is not None and self._pi.connected:
             try:
-                import RPi.GPIO as GPIO
-                GPIO.cleanup()
+                self._pi.set_PWM_dutycycle(GPIO_ENA, 0)
+                self._pi.set_PWM_dutycycle(GPIO_ENB, 0)
+                for pin in (GPIO_IN1, GPIO_IN2, GPIO_IN3, GPIO_IN4):
+                    self._pi.write(pin, 0)
             except Exception:
                 pass
+            self._pi.stop()
         super().destroy_node()
 
 

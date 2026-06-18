@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Launch all EsiBot nodes on the Raspberry Pi via SSH.
 # Usage: ./launch_robot.sh [PI_IP] [MODE]
-#   PI_IP  defaults to 10.103.24.99
+#   PI_IP  defaults to 10.196.185.99
 #   MODE   mapping (default) | navigation
 set -euo pipefail
 
-PI_IP="${1:-10.103.24.99}"
+PI_IP="${1:-10.196.185.99}"
 MODE="${2:-mapping}"
 PI_USER="esibot"
 PI_PASS="esibot"

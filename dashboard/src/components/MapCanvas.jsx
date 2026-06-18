@@ -104,8 +104,9 @@ export default function MapCanvas() {
       const s = msg.data
       if (s === 'sending')    setGoalStatus('sending')
       if (s === 'navigating') setGoalStatus('navigating')
-      if (s === 'reached')    setGoalStatus('sent')
+      if (s === 'reached')    { setGoalStatus('sent'); setGoalPt(null) }
       if (s === 'error')      setGoalStatus('error')
+      if (s === 'cancelled')  { setGoalStatus('cancelled'); setGoalPt(null); setTimeout(() => setGoalStatus(null), 2000) }
     })
 
     return () => { saveTopic.unsubscribe(); goalStatusTopic.unsubscribe() }
@@ -168,6 +169,18 @@ export default function MapCanvas() {
     setGoalMode(false)
   }, [rosRef, pose])
 
+  // ── Cancel nav goal ───────────────────────────────────────────────────────
+  const cancelGoal = useCallback(() => {
+    const ros = rosRef.current
+    if (!ros) return
+    const topic = new ROSLIB.Topic({
+      ros,
+      name: '/cancel_nav_goal',
+      messageType: 'std_msgs/Empty'
+    })
+    topic.publish(new ROSLIB.Message({}))
+  }, [rosRef])
+
   // ── Send initial pose to AMCL ────────────────────────────────────────────
   const sendInitPose = useCallback((wx, wy, yaw) => {
     const ros = rosRef.current
@@ -216,8 +229,7 @@ export default function MapCanvas() {
       const w = canvas.width
       const h = canvas.height
 
-      ctx.imageSmoothingEnabled = scaleRef.current < 2
-      ctx.imageSmoothingQuality = 'high'
+      ctx.imageSmoothingEnabled = false
       ctx.clearRect(0, 0, w, h)
       ctx.fillStyle = theme === 'light' ? '#e8edf4' : '#0a0f1e'
       ctx.fillRect(0, 0, w, h)
@@ -228,9 +240,9 @@ export default function MapCanvas() {
       if (meta && offscreen) {
         if (!centeredRef.current) {
           const fitScale = Math.min(
-            (w * 0.9) / offscreen.width,
-            (h * 0.9) / offscreen.height
-          ) * 0.6
+            (w * 0.85) / meta.width,
+            (h * 0.85) / meta.height
+          )
           scaleRef.current    = fitScale
           centeredRef.current = true
           autoCenter()
@@ -239,7 +251,7 @@ export default function MapCanvas() {
         const s = scaleRef.current
         ctx.save()
         ctx.translate(panRef.current.x, panRef.current.y)
-        ctx.drawImage(offscreen, 0, 0, offscreen.width * s, offscreen.height * s)
+        ctx.drawImage(offscreen, 0, 0, meta.width * s, meta.height * s)
         drawGrid(ctx, meta, s, theme)
         drawPath(ctx, pathRef.current, meta, s)
         if (SCAN_OVERLAY) drawScan(ctx, scan, pose, meta, s)
@@ -317,8 +329,19 @@ export default function MapCanvas() {
   // ── Mouse handlers ───────────────────────────────────────────────────────
 
   const onWheel = useCallback((e) => {
-    const factor = e.deltaY < 0 ? 1.15 : 0.87
-    scaleRef.current = Math.min(20, Math.max(0.2, scaleRef.current * factor))
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const sr = canvasRef.current.width / rect.width
+    const mx = (e.clientX - rect.left) * sr
+    const my = (e.clientY - rect.top) * sr
+
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1
+    const newScale = Math.min(40, Math.max(0.2, scaleRef.current * factor))
+    const ratio = newScale / scaleRef.current
+
+    panRef.current.x = mx - ratio * (mx - panRef.current.x)
+    panRef.current.y = my - ratio * (my - panRef.current.y)
+    scaleRef.current = newScale
   }, [])
 
   const onMouseDown = (e) => {
@@ -507,10 +530,11 @@ export default function MapCanvas() {
   // ── Label helpers ────────────────────────────────────────────────────────
   const mapSaveLabel = mapSaveStatus === 'saving' ? 'Saving…' : mapSaveStatus === 'saved' ? 'Saved' : mapSaveStatus === 'error' ? 'Error' : 'Save Map'
   const mapSaveColor = mapSaveStatus === 'saved' ? '#34d399' : mapSaveStatus === 'error' ? '#f87171' : undefined
+  const isNavigating = goalStatus === 'navigating' || goalStatus === 'sending'
   const goalBtnLabel = goalMode ? 'Cancel' : 'Nav Goal'
   const initBtnLabel = initPoseMode ? 'Cancel' : 'Set Pose'
-  const statusColor  = goalStatus === 'sent' ? '#34d399' : goalStatus === 'error' ? '#f87171' : '#fbbf24'
-  const statusLabel  = goalStatus === 'sending' ? 'Sending…' : goalStatus === 'navigating' ? 'Navigating…' : goalStatus === 'sent' ? 'Goal Reached' : goalStatus === 'error' ? 'Nav2 Error' : null
+  const statusColor  = goalStatus === 'sent' ? '#34d399' : goalStatus === 'error' ? '#f87171' : goalStatus === 'cancelled' ? '#fb923c' : '#fbbf24'
+  const statusLabel  = goalStatus === 'sending' ? 'Sending…' : goalStatus === 'navigating' ? 'Navigating…' : goalStatus === 'sent' ? 'Goal Reached' : goalStatus === 'error' ? 'Nav2 Error' : goalStatus === 'cancelled' ? 'Cancelled' : null
   const activeMode   = initPoseMode ? 'init' : goalMode ? 'goal' : null
 
   return (
@@ -543,14 +567,25 @@ export default function MapCanvas() {
             {initBtnLabel}
           </button>
 
-          <button
-            className={`map-btn${goalMode ? ' active' : ''}`}
-            onClick={toggleGoalMode}
-            disabled={!connected}
-            title="Click on the map to send a Nav2 goal"
-          >
-            {goalBtnLabel}
-          </button>
+          {isNavigating ? (
+            <button
+              className="map-btn active"
+              onClick={cancelGoal}
+              style={{ borderColor: '#f87171', color: '#f87171' }}
+              title="Cancel current navigation goal"
+            >
+              Stop Nav
+            </button>
+          ) : (
+            <button
+              className={`map-btn${goalMode ? ' active' : ''}`}
+              onClick={toggleGoalMode}
+              disabled={!connected}
+              title="Click on the map to send a Nav2 goal"
+            >
+              {goalBtnLabel}
+            </button>
+          )}
           <button
             className="map-btn"
             onClick={saveMap}

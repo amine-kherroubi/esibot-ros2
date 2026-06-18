@@ -4,6 +4,7 @@ map_saver_node.py — EsiBot UI
 Subscribes to /save_map (std_msgs/Empty).
 Launches esibot_slam save_map.launch.py and publishes status on /save_map_status.
 """
+import os
 import subprocess
 import rclpy
 from rclpy.node import Node
@@ -18,11 +19,14 @@ class MapSaverNode(Node):
         self.get_logger().info('MapSaverNode ready — listening on /save_map')
 
     def on_save(self, _msg):
-        self.get_logger().info('Saving map via save_map.launch.py ...')
+        maps_dir = os.path.join(os.path.expanduser('~'), 'robot_ws', 'src', 'maps')
+        os.makedirs(maps_dir, exist_ok=True)
+        self.get_logger().info(f'Saving map to {maps_dir} ...')
         self._publish('saving')
         try:
             result = subprocess.run(
-                ['ros2', 'launch', 'esibot_slam', 'save_map.launch.py'],
+                ['ros2', 'launch', 'esibot_slam', 'save_map.launch.py',
+                 f'map_dir:={maps_dir}'],
                 capture_output=True, text=True, timeout=20
             )
             if result.returncode == 0:

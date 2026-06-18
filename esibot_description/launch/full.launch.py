@@ -245,12 +245,12 @@ def generate_launch_description():
         condition=is_slam,
     )
 
-    # ── Node 6: nav2 +25s — nav mode only ───────────────────────────────────
+    # ── Node 6: nav2 +35s — nav mode only ───────────────────────────────────
     # Pi 4 needs driver (+2s) and radar (+3s) fully running before nav2 starts.
     # AMCL must publish map→odom TF before global_costmap activates.
-    # 25s gives localization time to converge on the Pi.
+    # 35s gives localization time to converge on the Pi.
     nav_launch = TimerAction(
-        period=25.0,
+        period=35.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(

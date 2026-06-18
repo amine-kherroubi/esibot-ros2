@@ -30,6 +30,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, JointState
+from std_msgs.msg import Float32
 
 try:
     import pigpio
@@ -79,8 +80,9 @@ class RadarNode(Node):
         self._pub_angle_max =  math.radians(105)
         self._pub_angle_inc = (self._pub_angle_max - self._pub_angle_min) / (self._steps - 1)
 
-        self._scan_pub = self.create_publisher(LaserScan, "/scan", 10)
-        self._js_pub   = self.create_publisher(JointState, "/joint_states", 10)
+        self._scan_pub  = self.create_publisher(LaserScan, "/scan", 10)
+        self._js_pub    = self.create_publisher(JointState, "/joint_states", 10)
+        self._servo_pub = self.create_publisher(Float32, "/servo_angle", 10)
 
         # pigpio state
         self._pi              = None
@@ -89,6 +91,7 @@ class RadarNode(Node):
         self._echo_ready      = threading.Event()
         self._echo_dist       = float("inf")
         self._pulse_us        = 1500
+        self._current_servo_deg = 0.0
 
         # RPi.GPIO fallback state
         self._servo_pwm = None
@@ -183,6 +186,7 @@ class RadarNode(Node):
         elif self._servo_pwm is not None:
             self._servo_pwm.ChangeDutyCycle(target_us / 20_000.0 * 100.0)
             self._pulse_us = target_us
+        self._current_servo_deg = servo_deg
 
     # ── HC-SR04 ranging ───────────────────────────────────────────────────────
 
@@ -308,6 +312,10 @@ class RadarNode(Node):
         js.name     = ["servo_joint"]
         js.position = [0.0]
         self._js_pub.publish(js)
+
+        servo_msg = Float32()
+        servo_msg.data = self._current_servo_deg
+        self._servo_pub.publish(servo_msg)
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
 

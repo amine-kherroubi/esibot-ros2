@@ -68,7 +68,8 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 def generate_launch_description():
 
-    slam_pkg = get_package_share_directory('esibot_slam')
+    maps_dir = os.path.join(os.path.expanduser('~'), 'robot_ws', 'src', 'maps')
+    os.makedirs(maps_dir, exist_ok=True)
 
     # ── Launch arguments ──────────────────────────────────────────────────────
     map_name_arg = DeclareLaunchArgument(
@@ -82,10 +83,10 @@ def generate_launch_description():
 
     map_dir_arg = DeclareLaunchArgument(
         'map_dir',
-        default_value=os.path.join(slam_pkg, 'maps'),
+        default_value=maps_dir,
         description=(
             'Destination directory for the map files. '
-            'Default: share/esibot_slam/maps/ inside the ROS 2 workspace.'
+            'Default: ~/robot_main/maps/ (persistent, survives colcon build).'
         ),
     )
 
