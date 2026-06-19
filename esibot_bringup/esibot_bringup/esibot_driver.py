@@ -70,6 +70,9 @@ MAX_PWM_DUTY =   55  # % — cap duty cycle to limit top speed (tune empirically
 # Velocity threshold below which the motor is stopped (m/s)
 MOTOR_DEADBAND = 0.05
 
+# L298N BJT drops ~2 V; below ~30 % duty the motors stall — enforce this floor
+MIN_PWM_DUTY = 30
+
 
 class EsibotDriver(Node):
 
@@ -235,16 +238,19 @@ class EsibotDriver(Node):
         # Convert % duty (0-100) to pigpio range (0-255)
         duty_left  = int(min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY) * 255 / 100)
         duty_right = int(min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY) * 255 / 100)
+        min_duty   = int(MIN_PWM_DUTY * 255 / 100)
 
         # Left motor direction + sign tracking for encoder integration
         if v_left > MOTOR_DEADBAND:
             pi.write(GPIO_IN1, 1)
             pi.write(GPIO_IN2, 0)
             self._dir_left = +1
+            duty_left = max(duty_left, min_duty)
         elif v_left < -MOTOR_DEADBAND:
             pi.write(GPIO_IN1, 0)
             pi.write(GPIO_IN2, 1)
             self._dir_left = -1
+            duty_left = max(duty_left, min_duty)
         else:
             pi.write(GPIO_IN1, 0)
             pi.write(GPIO_IN2, 0)
@@ -256,10 +262,12 @@ class EsibotDriver(Node):
             pi.write(GPIO_IN3, 1)
             pi.write(GPIO_IN4, 0)
             self._dir_right = +1
+            duty_right = max(duty_right, min_duty)
         elif v_right < -MOTOR_DEADBAND:
             pi.write(GPIO_IN3, 0)
             pi.write(GPIO_IN4, 1)
             self._dir_right = -1
+            duty_right = max(duty_right, min_duty)
         else:
             pi.write(GPIO_IN3, 0)
             pi.write(GPIO_IN4, 0)
