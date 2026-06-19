@@ -40,7 +40,8 @@ import pigpio
 WHEEL_BASE   = 0.16    # metres  — distance between wheel centres
 WHEEL_RADIUS = 0.033   # metres  — wheel radius
 
-# 20-hole encoder disc, counting both edges (RISING + FALLING) → 40 ticks/rev.
+# With 100µs glitch filter active, filter cuts ~half of EITHER_EDGE transitions.
+# Empirical: 131/136 (L/R) ticks for 70cm → effective 40 ticks/rev (vs raw 72).
 TICKS_PER_REV = 40
 
 # Derived: metres per tick
@@ -63,7 +64,7 @@ GPIO_IN4 = 6    # Pin 31 — right motor backward
 # L298N speed control via PWM on ENA/ENB
 GPIO_ENA = 19   # Pin 35 — left  motor speed (hardware PWM1)
 GPIO_ENB = 18   # Pin 12 — right motor speed (hardware PWM0)
-PWM_FREQ     = 1000  # Hz — motor PWM frequency
+PWM_FREQ     = 1000  # Hz — motor PWM frequency (L298N BJTs can't switch above ~10kHz)
 MAX_PWM_DUTY =   55  # % — cap duty cycle to limit top speed (tune empirically)
 
 # Velocity threshold below which the motor is stopped (m/s)
@@ -175,6 +176,10 @@ class EsibotDriver(Node):
             self._pi.set_mode(GPIO_ENCODER_RIGHT, pigpio.INPUT)
             self._pi.set_pull_up_down(GPIO_ENCODER_LEFT, pigpio.PUD_UP)
             self._pi.set_pull_up_down(GPIO_ENCODER_RIGHT, pigpio.PUD_UP)
+
+            # Reject H-bridge switching spikes (<100µs); real encoder pulses are ≥4ms at max speed
+            self._pi.set_glitch_filter(GPIO_ENCODER_LEFT,  100)
+            self._pi.set_glitch_filter(GPIO_ENCODER_RIGHT, 100)
 
             self._cb_left = self._pi.callback(
                 GPIO_ENCODER_LEFT, pigpio.EITHER_EDGE, self._left_encoder_cb
