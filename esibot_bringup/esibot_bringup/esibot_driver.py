@@ -38,7 +38,7 @@ import pigpio
 # ─────────────────────────────────────────────────────────
 
 WHEEL_BASE   = 0.16    # metres  — distance between wheel centres
-WHEEL_RADIUS = 0.033   # metres  — wheel radius
+WHEEL_RADIUS = 0.0352  # metres  — wheel radius (calibrated: tape 1.55m / odom 1.453m)
 
 # With 100µs glitch filter active, filter cuts ~half of EITHER_EDGE transitions.
 # Empirical: 131/136 (L/R) ticks for 70cm → effective 40 ticks/rev (vs raw 72).
@@ -72,6 +72,14 @@ MOTOR_DEADBAND = 0.05
 
 # L298N BJT drops ~2 V; below ~40 % duty the motors stall under load — enforce this floor
 MIN_PWM_DUTY = 40
+
+# Motor trim — compensate for left/right motor imbalance (range 0.0–1.0)
+# Reduce the faster side so the robot goes straight under open-loop cmd_vel.
+# Robot curves LEFT  → left motor faster  → reduce LEFT_TRIM  below 1.0
+# Robot curves RIGHT → right motor faster → reduce RIGHT_TRIM below 1.0
+LEFT_TRIM  = 0.72   # calibrated: minimises lateral deviation (y=-0.021m over 1.55m)
+RIGHT_TRIM = 1.0
+RIGHT_ENCODER_SCALE = 1.0
 
 
 
@@ -237,8 +245,8 @@ class EsibotDriver(Node):
         pi = self._pi
 
         # Convert % duty (0-100) to pigpio range (0-255)
-        duty_left  = int(min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY) * 255 / 100)
-        duty_right = int(min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY, MAX_PWM_DUTY) * 255 / 100)
+        duty_left  = int(min(abs(v_left)  / MAX_LINEAR_VEL * MAX_PWM_DUTY * LEFT_TRIM,  MAX_PWM_DUTY) * 255 / 100)
+        duty_right = int(min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY * RIGHT_TRIM, MAX_PWM_DUTY) * 255 / 100)
         min_duty   = int(MIN_PWM_DUTY * 255 / 100)
 
         # Left motor direction + sign tracking for encoder integration
