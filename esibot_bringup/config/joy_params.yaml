@@ -1,0 +1,25 @@
+# PS4 DualShock 4 — teleop_twist_joy config
+# Mapping (Linux hid-sony / ds4drv):
+#   axes[1]  = left  stick Y  (-1=up/forward, +1=down/backward)
+#   axes[3]  = right stick X  (-1=left, +1=right)
+#   button 4 = L1  (enable button — must hold to send cmd_vel)
+#   button 5 = R1  (turbo — higher speed while held)
+
+teleop_twist_joy_node:
+  ros__parameters:
+    axis_linear:
+      x: 1
+    axis_angular:
+      yaw: 3
+    scale_linear:
+      x: 0.4
+    scale_linear_turbo:
+      x: 0.7
+    scale_angular:
+      yaw: 1.5
+    scale_angular_turbo:
+      yaw: 2.0
+    enable_button: 4        # L1 — hold to drive
+    enable_turbo_button: 5  # R1 — hold for turbo
+    require_enable_button: true
+    publish_stamped_twist: false

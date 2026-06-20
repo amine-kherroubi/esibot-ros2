@@ -65,7 +65,7 @@ GPIO_IN4 = 6    # Pin 31 — right motor backward
 GPIO_ENA = 19   # Pin 35 — left  motor speed (hardware PWM1)
 GPIO_ENB = 18   # Pin 12 — right motor speed (hardware PWM0)
 PWM_FREQ     = 1000  # Hz — motor PWM frequency (L298N BJTs can't switch above ~10kHz)
-MAX_PWM_DUTY =   55  # % — cap duty cycle to limit top speed (tune empirically)
+MAX_PWM_DUTY =   70  # % — cap duty cycle to limit top speed (tune empirically)
 
 # Velocity threshold below which the motor is stopped (m/s)
 MOTOR_DEADBAND = 0.05

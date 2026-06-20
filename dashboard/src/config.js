@@ -1,10 +1,15 @@
 export const ROSBRIDGE_URL = `ws://${window.location.hostname}:9090`
 
+export const AUTH = {
+  username: 'esibot',
+  password: 'esibot',
+}
+
 export const ROBOT_NAME = 'EsiBot'
 
 export const CMD_VEL = {
   LINEAR_SPEED: 0.4,
-  ANGULAR_SPEED: 1.5
+  ANGULAR_SPEED: 2.0
 }
 
 export const BATTERY_CAPACITY_MINUTES = 45

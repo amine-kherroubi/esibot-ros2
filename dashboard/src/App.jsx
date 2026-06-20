@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { RosbridgeProvider } from './context/RosbridgeContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { ToastProvider, useToast } from './components/Toast'
@@ -10,6 +11,7 @@ import VideoFeed       from './components/VideoFeed'
 import Teleop          from './components/Teleop'
 import ServoGauge      from './components/ServoGauge'
 import ConnectionPanel from './components/ConnectionPanel'
+import LoginPage       from './components/LoginPage'
 
 function ConnectionToaster() {
   const { connected, connecting } = useRosbridgeContext()
@@ -49,14 +51,26 @@ function Dashboard() {
   )
 }
 
+function Root() {
+  const { authed } = useAuth()
+
+  if (!authed) return <LoginPage />
+
+  return (
+    <RosbridgeProvider>
+      <ToastProvider>
+        <Dashboard />
+      </ToastProvider>
+    </RosbridgeProvider>
+  )
+}
+
 export default function App() {
   return (
-    <ThemeProvider>
-      <RosbridgeProvider>
-        <ToastProvider>
-          <Dashboard />
-        </ToastProvider>
-      </RosbridgeProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <Root />
+      </ThemeProvider>
+    </AuthProvider>
   )
 }

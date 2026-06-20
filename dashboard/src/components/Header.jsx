@@ -2,6 +2,7 @@ import React from 'react'
 import { useRosbridgeContext } from '../context/RosbridgeContext'
 import { useTheme } from '../context/ThemeContext'
 import { useSystemStatus } from '../hooks/useSystemStatus'
+import { useAuth } from '../context/AuthContext'
 import { ROBOT_NAME } from '../config.js'
 
 const SunIcon = () => (
@@ -44,9 +45,18 @@ function SystemStatusBadge() {
   )
 }
 
+const LogoutIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+    <polyline points="16 17 21 12 16 7"/>
+    <line x1="21" y1="12" x2="9" y2="12"/>
+  </svg>
+)
+
 export default function Header() {
   const { connected, connecting, latency } = useRosbridgeContext()
   const { theme, toggle } = useTheme()
+  const { logout } = useAuth()
 
   const dotClass = connected ? 'connected' : connecting ? 'connecting' : 'disconnected'
   const statusLabel = connected ? 'Connected' : connecting ? 'Connecting' : 'Disconnected'
@@ -60,7 +70,6 @@ export default function Header() {
           </svg>
         </div>
         <h1 className="header-title">{ROBOT_NAME}</h1>
-        <span className="header-subtitle">Mission Control</span>
       </div>
 
       <nav className="header-right" aria-label="Robot status and controls">
@@ -79,6 +88,14 @@ export default function Header() {
           title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
         >
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        </button>
+        <button
+          className="theme-toggle logout-btn"
+          onClick={logout}
+          aria-label="Sign out"
+          title="Sign out"
+        >
+          <LogoutIcon />
         </button>
       </nav>
     </header>
