@@ -70,8 +70,9 @@ MAX_PWM_DUTY =   55  # % — cap duty cycle to limit top speed (tune empirically
 # Velocity threshold below which the motor is stopped (m/s)
 MOTOR_DEADBAND = 0.05
 
-# L298N BJT drops ~2 V; below ~30 % duty the motors stall — enforce this floor
-MIN_PWM_DUTY = 30
+# L298N BJT drops ~2 V; below ~40 % duty the motors stall under load — enforce this floor
+MIN_PWM_DUTY = 40
+
 
 
 class EsibotDriver(Node):
