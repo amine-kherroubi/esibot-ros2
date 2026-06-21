@@ -36,8 +36,7 @@ Launch order (fixed):
   2. dashboard        +1s    → HTTP :8080, rosbridge :9090               (all modes)
   3. esibot_driver    +2s    → /odom, /tf (odom→base_footprint)         (all modes)
   4. radar_node       +3s    → /scan, /joint_states                     (slam / nav)
-  4. camera_node      +3s    → /camera/image_raw, /camera/camera_info   (vision)
-  5. vision_node      +4s    → detections, annotated stream              (vision)
+  4. vision_node      +3s    → detections, annotated stream              (vision)
   5. slam_toolbox     +5s    → /map, /tf (map→odom)                     (slam)
   6. nav2             +35s   → navigation stack                          (nav)
 """
@@ -222,29 +221,13 @@ def generate_launch_description():
         condition=is_slam_or_nav,
     )
 
-    # ── Node 4b: camera_node +3s — vision mode only ───────────────────────────
-    # camera_link is in /tf_static from robot_state_publisher (Node 1).
-    # 3s delay is sufficient for that to be published.
-    camera_launch = TimerAction(
-        period=3.0,
-        actions=[
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(camera_pkg, "launch", "camera.launch.py")
-                ),
-                launch_arguments={"sim_mode": sim_mode}.items(),
-            )
-        ],
-        condition=is_vision,
-    )
-
-    # ── Node 5a: vision_node +4s — vision mode only ───────────────────────────
-    # 1s after camera_node to ensure /camera/image_raw is publishing
-    # before vision_node tries to subscribe.
+    # ── Node 5a: vision_node +3s — vision mode only ───────────────────────────
+    # vision_node connects directly to ESP32-CAM MJPEG stream.
+    # camera_stream_node is NOT launched — ESP32 only accepts one client.
     # sign_model_path left empty → obstacle-only (yolov8n.pt default).
     # lane_detection disabled — not needed for current use case.
     vision_launch = TimerAction(
-        period=4.0,
+        period=3.0,
         actions=[
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -305,8 +288,7 @@ def generate_launch_description():
             dashboard_launch, # +1s      — all modes
             driver_launch,    # +2s      — all modes
             radar_launch,     # +3s      — slam / nav only
-            camera_launch,    # +3s      — vision only
-            vision_launch,    # +4s      — vision only
+            vision_launch,    # +3s      — vision only
             slam_launch,      # +5s      — slam only
             nav_launch,       # +35s     — nav only
         ]

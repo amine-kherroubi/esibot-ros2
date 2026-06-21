@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useCamera } from '../hooks/useCamera'
 import { useEsp32Ip } from '../hooks/useEsp32Ip'
+import { useDetections } from '../hooks/useDetections'
 
 const TABS = ['Annotated', 'Raw']
 
@@ -8,6 +9,7 @@ export default function VideoFeed() {
   const [selected, setSelected] = useState('Annotated')
   const { imgSrc } = useCamera(selected === 'Annotated' ? '/camera/image_annotated/compressed' : null)
   const { ip, setIp, streamUrl } = useEsp32Ip()
+  const { obstacles, signs } = useDetections()
 
   const [showSettings, setShowSettings] = useState(false)
   const [draft, setDraft] = useState(ip)
@@ -60,6 +62,29 @@ export default function VideoFeed() {
           </button>
         </div>
       </div>
+
+      {(obstacles.length > 0 || signs.length > 0) && (
+        <div className="detection-badges">
+          {obstacles.map((o, i) => (
+            <span
+              key={`obs-${i}`}
+              className={`det-badge ${o.in_lane ? 'det-badge--alert' : 'det-badge--obstacle'}`}
+              title={`Confidence: ${Math.round(o.conf * 100)}%`}
+            >
+              {o.label} · {o.proximity}
+            </span>
+          ))}
+          {signs.map((s, i) => (
+            <span
+              key={`sign-${i}`}
+              className="det-badge det-badge--sign"
+              title={`Confidence: ${Math.round(s.conf * 100)}%`}
+            >
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
 
       {showSettings && (
         <form className="cam-settings" onSubmit={handleSave}>
