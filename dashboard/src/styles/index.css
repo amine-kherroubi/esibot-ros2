@@ -1,6 +1,5 @@
 /* ── Reset & base ─────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { touch-action: manipulation; }
 
 :root {
   --bg:           #070b14;
@@ -581,11 +580,12 @@ html, body, #root {
 /* ── Layout ──────────────────────────────────────────────────────────── */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 340px 1fr 270px;
-  gap: var(--gap);
+  grid-template-columns: var(--left-w, 340px) auto 1fr 270px;
+  gap: 0;
   padding: var(--gap);
   height: calc(100vh - 52px);
   overflow: hidden;
+  column-gap: 0;
 }
 
 .col-left, .col-center, .col-right {
@@ -593,6 +593,86 @@ html, body, #root {
   flex-direction: column;
   gap: var(--gap);
   overflow: hidden;
+}
+
+.col-left    { padding-right: 0; }
+.col-center  { padding-left: var(--gap); padding-right: var(--gap); }
+
+/* ── Resize handle ───────────────────────────────────────────────────── */
+.resize-handle {
+  width: 12px;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+.resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--border);
+  border-radius: 1px;
+  transition: background 0.25s, box-shadow 0.25s, width 0.25s;
+}
+
+.resize-handle:hover::before,
+.resize-handle:active::before {
+  width: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3), 0 0 20px rgba(56, 189, 248, 0.1);
+}
+
+.resize-handle-grip {
+  width: 4px;
+  height: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.25s;
+  z-index: 1;
+}
+
+.resize-handle:hover .resize-handle-grip,
+.resize-handle:active .resize-handle-grip {
+  opacity: 1;
+}
+
+.resize-handle-grip::before,
+.resize-handle-grip::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 4px rgba(56, 189, 248, 0.4);
+}
+
+[data-theme="light"] .resize-handle::before {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .resize-handle:hover::before,
+[data-theme="light"] .resize-handle:active::before {
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.2);
+}
+
+[data-theme="light"] .resize-handle-grip::before,
+[data-theme="light"] .resize-handle-grip::after {
+  background: var(--accent);
+  box-shadow: 0 0 4px rgba(2, 132, 199, 0.3);
 }
 
 /* ── Card (glass) ────────────────────────────────────────────────────── */
@@ -1324,13 +1404,13 @@ h1.header-title {
 /* ── Responsive ─────────────────────────────────────────────────────── */
 @media (min-width: 1921px) {
   .dashboard-grid {
-    grid-template-columns: minmax(340px, 400px) 1fr minmax(270px, 320px);
+    grid-template-columns: var(--left-w, 400px) auto 1fr minmax(270px, 320px);
   }
 }
 
 @media (max-width: 1200px) {
   .dashboard-grid {
-    grid-template-columns: 280px 1fr 240px;
+    grid-template-columns: var(--left-w, 280px) auto 1fr 240px;
   }
 }
 
@@ -1349,6 +1429,8 @@ h1.header-title {
   .col-left, .col-center, .col-right {
     display: contents;
   }
+  .col-center { padding-left: 0; padding-right: 0; }
+  .resize-handle { display: none; }
   .connection-card { order: 1; }
   .video-card      { order: 2; min-height: 240px; }
   .teleop-card     { order: 3; }

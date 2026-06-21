@@ -8,12 +8,13 @@ export default function LoginPage() {
   const [error, setError] = useState(false)
   const [shake, setShake] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (login(username, password)) {
+    const result = await login(username, password)
+    if (result === true) {
       setError(false)
     } else {
-      setError(true)
+      setError(result === 'rate_limited' ? 'Too many attempts — wait 60s' : 'Invalid credentials')
       setShake(true)
       setTimeout(() => setShake(false), 500)
     }
@@ -58,7 +59,7 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
           </div>
-          {error && <p className="login-error" role="alert">Invalid credentials</p>}
+          {error && <p className="login-error" role="alert">{error}</p>}
           <button className="btn btn-primary login-btn" type="submit">
             Sign in
           </button>

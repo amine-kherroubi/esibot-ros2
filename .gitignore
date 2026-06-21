@@ -16,6 +16,10 @@ metadata.yaml
 dashboard/node_modules/
 dashboard/dist/
 
+# auth — fichier de credentials (jamais versionné)
+.esibot_auth
+*.auth
+
 # esibot_vision — fichiers locaux non versionnés
 esibot_vision/runs/
 esibot_vision/dataset/

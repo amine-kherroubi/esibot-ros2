@@ -1,5 +1,5 @@
 #!/bin/bash
-# stop_robot.sh — Clean shutdown of all EsiBot ROS2 nodes
+# stop_robot.sh - Clean shutdown of all EsiBot ROS2 nodes
 # Usage: ./stop_robot.sh
 #   or:  ssh esibot@<pi-ip> 'bash -s' < stop_robot.sh
 
@@ -26,6 +26,14 @@ pkill -15 -f 'smoother_server' 2>/dev/null
 pkill -15 -f 'waypoint_follower' 2>/dev/null
 pkill -15 -f 'docking_server' 2>/dev/null
 pkill -15 -f 'route_server' 2>/dev/null
+pkill -15 -f 'vision_node' 2>/dev/null
+pkill -15 -f 'camera_node' 2>/dev/null
+pkill -15 -f 'dashboard_node' 2>/dev/null
+pkill -15 -f 'map_saver_node' 2>/dev/null
+pkill -15 -f 'nav_goal_proxy' 2>/dev/null
+pkill -15 -f 'esibot_driver' 2>/dev/null
+pkill -15 -f 'radar_node' 2>/dev/null
+fuser -k 8080/tcp 9090/tcp 2>/dev/null
 
 # 2. Wait for graceful shutdown
 echo "[2/5] Waiting 3s for graceful shutdown..."

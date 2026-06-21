@@ -21,8 +21,8 @@ Usage:
   # Camera + vision only (real ESP32-CAM required):
   ros2 launch esibot_description full.launch.py mode:=vision
 
-  # Camera + vision in sim mode:
-  ros2 launch esibot_description full.launch.py sim_mode:=true mode:=vision
+  # Camera + vision with custom ESP32 IP:
+  ros2 launch esibot_description full.launch.py mode:=vision esp32_ip:=10.55.37.10
 
   # Real hardware + SLAM:
   ros2 launch esibot_description full.launch.py mode:=slam
@@ -33,12 +33,13 @@ Usage:
 Launch order (fixed):
   1. robot_state_publisher   → /robot_description, /tf_static           (all modes)
   2. foxglove_bridge         → WebSocket ws://localhost:8765             (all modes)
+  2. dashboard        +1s    → HTTP :8080, rosbridge :9090               (all modes)
   3. esibot_driver    +2s    → /odom, /tf (odom→base_footprint)         (all modes)
   4. radar_node       +3s    → /scan, /joint_states                     (slam / nav)
   4. camera_node      +3s    → /camera/image_raw, /camera/camera_info   (vision)
   5. vision_node      +4s    → detections, annotated stream              (vision)
   5. slam_toolbox     +5s    → /map, /tf (map→odom)                     (slam)
-  6. nav2             +5s    → navigation stack                          (nav)
+  6. nav2             +35s   → navigation stack                          (nav)
 """
 
 import os
@@ -74,6 +75,7 @@ def generate_launch_description():
     nav_pkg = get_package_share_directory("esibot_navigation")
     camera_pkg = get_package_share_directory("esibot_camera")
     vision_pkg = get_package_share_directory("esibot_vision")
+    ui_pkg = get_package_share_directory("esibot_ui")
 
     default_urdf = os.path.join(desc_pkg, "urdf", "esibot.urdf.xacro")
 
@@ -100,13 +102,20 @@ def generate_launch_description():
 
     use_foxglove_arg = DeclareLaunchArgument(
         "use_foxglove",
-        default_value="true",
+        default_value="false",
         description="Launch Foxglove WebSocket bridge on ws://localhost:8765",
+    )
+
+    esp32_ip_arg = DeclareLaunchArgument(
+        "esp32_ip",
+        default_value="10.55.37.10",
+        description="ESP32-CAM IP address (vision mode only).",
     )
 
     sim_mode = LaunchConfiguration("sim_mode")
     mode = LaunchConfiguration("mode")
     use_foxglove = LaunchConfiguration("use_foxglove")
+    esp32_ip = LaunchConfiguration("esp32_ip")
 
     is_slam = IfCondition(PythonExpression(["'", mode, "' == 'slam'"]))
     is_nav = IfCondition(PythonExpression(["'", mode, "' == 'nav'"]))
@@ -172,6 +181,20 @@ def generate_launch_description():
         condition=IfCondition(use_foxglove),
     )
 
+    # ── Dashboard +1s — all modes ────────────────────────────────────────────
+    # rosbridge (:9090) + HTTP dashboard (:8080) — starts before driver so the
+    # UI is reachable as soon as the bringup is up.
+    dashboard_launch = TimerAction(
+        period=1.0,
+        actions=[
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(ui_pkg, "launch", "dashboard.launch.py")
+                ),
+            )
+        ],
+    )
+
     # ── Node 3: esibot_driver +2s — all modes ────────────────────────────────
     driver_launch = TimerAction(
         period=2.0,
@@ -218,6 +241,8 @@ def generate_launch_description():
     # ── Node 5a: vision_node +4s — vision mode only ───────────────────────────
     # 1s after camera_node to ensure /camera/image_raw is publishing
     # before vision_node tries to subscribe.
+    # sign_model_path left empty → obstacle-only (yolov8n.pt default).
+    # lane_detection disabled — not needed for current use case.
     vision_launch = TimerAction(
         period=4.0,
         actions=[
@@ -225,6 +250,11 @@ def generate_launch_description():
                 PythonLaunchDescriptionSource(
                     os.path.join(vision_pkg, "launch", "vision.launch.py")
                 ),
+                launch_arguments={
+                    "esp32_ip":        esp32_ip,
+                    "lane_detection":  "false",
+                    "sign_model_path": "",
+                }.items(),
             )
         ],
         condition=is_vision,
@@ -267,15 +297,17 @@ def generate_launch_description():
             sim_mode_arg,
             mode_arg,
             use_foxglove_arg,
+            esp32_ip_arg,
             log_start,
             ensure_pigpiod,   # immediate — hw mode only
             robot_state_pub,  # immediate — all modes
             foxglove_bridge,  # immediate — all modes
-            driver_launch,  # +2s      — all modes
-            radar_launch,  # +3s      — slam / nav only
-            camera_launch,  # +3s      — vision only
-            vision_launch,  # +4s      — vision only
-            slam_launch,  # +5s      — slam only
-            nav_launch,  # +5s      — nav only
+            dashboard_launch, # +1s      — all modes
+            driver_launch,    # +2s      — all modes
+            radar_launch,     # +3s      — slam / nav only
+            camera_launch,    # +3s      — vision only
+            vision_launch,    # +4s      — vision only
+            slam_launch,      # +5s      — slam only
+            nav_launch,       # +35s     — nav only
         ]
     )
