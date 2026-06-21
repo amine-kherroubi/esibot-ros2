@@ -37,7 +37,7 @@ import pigpio
 #  ROBOT PHYSICAL PARAMETERS  — calibrate empirically
 # ─────────────────────────────────────────────────────────
 
-WHEEL_BASE   = 0.16    # metres  — distance between wheel centres
+WHEEL_BASE   = 0.141   # metres  — calibrated: odom 311.81° vs physical 280° at WB=0.127 → 0.127*(311.81/280)
 WHEEL_RADIUS = 0.0352  # metres  — wheel radius (calibrated: tape 1.55m / odom 1.453m)
 
 # With 100µs glitch filter active, filter cuts ~half of EITHER_EDGE transitions.
@@ -49,7 +49,7 @@ METRES_PER_TICK = (2.0 * math.pi * WHEEL_RADIUS) / TICKS_PER_REV
 
 # Velocity limits — clamp incoming cmd_vel before forwarding to ESP32
 MAX_LINEAR_VEL  = 0.3   # m/s
-MAX_ANGULAR_VEL = 2.0   # rad/s
+MAX_ANGULAR_VEL = 2.0   # rad/s   // maybe not the problem 
 
 # RPi GPIO pin numbers (BCM numbering) for encoder digital outputs
 GPIO_ENCODER_LEFT  = 24   # D0 of left  encoder → RPi Pin 18
@@ -65,13 +65,13 @@ GPIO_IN4 = 6    # Pin 31 — right motor backward
 GPIO_ENA = 19   # Pin 35 — left  motor speed (hardware PWM1)
 GPIO_ENB = 18   # Pin 12 — right motor speed (hardware PWM0)
 PWM_FREQ     = 1000  # Hz — motor PWM frequency (L298N BJTs can't switch above ~10kHz)
-MAX_PWM_DUTY =   70  # % — cap duty cycle to limit top speed (tune empirically)
+MAX_PWM_DUTY =   70 # % — cap duty cycle to limit top speed (tune empirically)   // maybe not the problem 
 
 # Velocity threshold below which the motor is stopped (m/s)
 MOTOR_DEADBAND = 0.05
 
 # L298N BJT drops ~2 V; below ~40 % duty the motors stall under load — enforce this floor
-MIN_PWM_DUTY = 40
+MIN_PWM_DUTY = 45   
 
 # Motor trim — compensate for left/right motor imbalance (range 0.0–1.0)
 # Reduce the faster side so the robot goes straight under open-loop cmd_vel.
@@ -249,39 +249,41 @@ class EsibotDriver(Node):
         duty_right = int(min(abs(v_right) / MAX_LINEAR_VEL * MAX_PWM_DUTY * RIGHT_TRIM, MAX_PWM_DUTY) * 255 / 100)
         min_duty   = int(MIN_PWM_DUTY * 255 / 100)
 
-        # Left motor direction + sign tracking for encoder integration
+        # Left motor direction (motor control)
+        # Cross-wiring: GPIO24 (_ticks_left) tracks the RIGHT motor's wheel,
+        # so _dir_left is set from v_right (the motor that drives that wheel).
         if v_left > MOTOR_DEADBAND:
             pi.write(GPIO_IN1, 1)
             pi.write(GPIO_IN2, 0)
-            self._dir_left = +1
             duty_left = max(duty_left, min_duty)
         elif v_left < -MOTOR_DEADBAND:
             pi.write(GPIO_IN1, 0)
             pi.write(GPIO_IN2, 1)
-            self._dir_left = -1
             duty_left = max(duty_left, min_duty)
         else:
             pi.write(GPIO_IN1, 0)
             pi.write(GPIO_IN2, 0)
             duty_left = 0
-            self._dir_left = 0
 
-        # Right motor direction + sign tracking for encoder integration
+        # Right motor direction (motor control)
+        # Cross-wiring: GPIO17 (_ticks_right) tracks the LEFT motor's wheel,
+        # so _dir_right is set from v_left (the motor that drives that wheel).
         if v_right > MOTOR_DEADBAND:
             pi.write(GPIO_IN3, 1)
             pi.write(GPIO_IN4, 0)
-            self._dir_right = +1
             duty_right = max(duty_right, min_duty)
         elif v_right < -MOTOR_DEADBAND:
             pi.write(GPIO_IN3, 0)
             pi.write(GPIO_IN4, 1)
-            self._dir_right = -1
             duty_right = max(duty_right, min_duty)
         else:
             pi.write(GPIO_IN3, 0)
             pi.write(GPIO_IN4, 0)
             duty_right = 0
-            self._dir_right = 0
+
+        # Dir signs follow the encoder's physical wheel, not the motor code name
+        self._dir_left  = +1 if v_right > MOTOR_DEADBAND else (-1 if v_right < -MOTOR_DEADBAND else 0)
+        self._dir_right = +1 if v_left  > MOTOR_DEADBAND else (-1 if v_left  < -MOTOR_DEADBAND else 0)
 
         # Speed via PWM duty cycle (pigpio range 0-255)
         pi.set_PWM_dutycycle(GPIO_ENA, duty_left)
@@ -382,7 +384,7 @@ class EsibotDriver(Node):
             )
 
         delta_center = (delta_right + delta_left)  / 2.0
-        delta_theta  = (delta_right - delta_left)  / WHEEL_BASE
+        delta_theta  = (delta_left  - delta_right) / WHEEL_BASE
 
         # Runge-Kutta 2nd order integration
         self.x     += delta_center * math.cos(self.theta + delta_theta / 2.0)
@@ -441,6 +443,8 @@ class EsibotDriver(Node):
         self._last_cmd_time = self.get_clock().now()
 
         if linear == 0.0 and angular != 0.0:
+            # Single-wheel pivot: one wheel drives at full angular speed while the other stops.
+            # Gives enough torque for in-place rotation (standard diff-drive at half-speed stalls).
             v_right = max(0.0,  angular) * WHEEL_BASE
             v_left  = max(0.0, -angular) * WHEEL_BASE
         else:
