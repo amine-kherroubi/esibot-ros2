@@ -107,7 +107,7 @@ def generate_launch_description():
 
     esp32_ip_arg = DeclareLaunchArgument(
         "esp32_ip",
-        default_value="10.55.37.10",
+        default_value="10.74.68.10",
         description="ESP32-CAM IP address (vision mode only).",
     )
 
@@ -287,9 +287,9 @@ def generate_launch_description():
             foxglove_bridge,  # immediate — all modes
             dashboard_launch, # +1s      — all modes
             driver_launch,    # +2s      — all modes
-            radar_launch,     # +3s      — slam / nav only
-            vision_launch,    # +3s      — vision only
-            slam_launch,      # +5s      — slam only
-            nav_launch,       # +35s     — nav only
+            radar_launch,       # +3s  — slam / nav only
+            vision_launch,      # +3s  — vision only
+            slam_launch,        # +5s  — slam only
+            nav_launch,         # +35s — nav only
         ]
     )

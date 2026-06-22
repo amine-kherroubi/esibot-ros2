@@ -80,7 +80,7 @@ controller_server:
   ros__parameters:
     controller_frequency: 1.0
     costmap_update_timeout: 15.0
-    min_x_velocity_threshold: 0.001
+    min_x_velocity_threshold: 0.05
     min_y_velocity_threshold: 0.0
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
@@ -100,7 +100,7 @@ controller_server:
       yaw_goal_tolerance: 0.15
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.25
+      desired_linear_vel: 0.18
       lookahead_dist: 0.4
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
@@ -127,8 +127,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 0.2
-      publish_frequency: 0.2
+      update_frequency: 0.25
+      publish_frequency: 0.25
       transform_tolerance: 4.0  # HC-SR04 TF can be up to ~4 s stale between sweeps
       global_frame: odom
       robot_base_frame: base_footprint
@@ -162,8 +162,8 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 0.2
-      publish_frequency: 0.2
+      update_frequency: 0.25
+      publish_frequency: 0.25
       transform_tolerance: 4.0  # HC-SR04 TF can be up to ~4 s stale between sweeps
       global_frame: map
       robot_base_frame: base_footprint
@@ -215,7 +215,7 @@ planner_server:
       plugin: "nav2_navfn_planner::NavfnPlanner"
       tolerance: 0.5
       use_astar: false
-      allow_unknown: true
+      allow_unknown: false
 
 smoother_server:
   ros__parameters:
